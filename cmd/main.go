@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"flag"
 	"fmt"
@@ -9,6 +10,7 @@ import (
 	"net"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 )
@@ -105,9 +107,46 @@ func runServer(ctx context.Context, cfg Config) {
 		go func(c net.Conn) {
 			defer c.Close()
 
-			_, err := io.Copy(os.Stdout, c)
-			if err != nil {
-				log.Println("Connection error: ", err)
+			log.Println("client connected")
+
+			reader := bufio.NewReaderSize(c, 1024)
+
+			for {
+				line, err := reader.ReadSlice('\n')
+				if err == bufio.ErrBufferFull {
+					log.Println("command too long")
+					return
+				}
+
+				if err == io.EOF {
+					log.Println("client disconnected")
+					return
+				}
+
+				if err != nil {
+					log.Println("read error:", err)
+					return
+				}
+
+				command := strings.TrimSpace(string(line))
+
+				log.Println("client:", command)
+				switch command {
+				case "HELLO":
+					_, err = c.Write([]byte("OK\n"))
+				case "PING":
+					_, err = c.Write([]byte("PONG\n"))
+				case "QUIT":
+					_, err = c.Write([]byte("BYE\n"))
+					return
+				default:
+					_, err = c.Write([]byte("ERR unknown command\n"))
+				}
+
+				if err != nil {
+					log.Println("write error:", err)
+					return
+				}
 			}
 		}(conn)
 	}
@@ -124,10 +163,25 @@ func runClient(cfg Config) {
 	}
 	defer conn.Close()
 
-	for _, char := range []byte("Test 123 321 123 Test") {
-		if _, err := conn.Write([]byte{char}); err != nil {
-			log.Fatalln(err)
-		}
-		time.Sleep(500 * time.Millisecond)
+	if _, err := conn.Write([]byte("HELLO\n")); err != nil {
+		log.Fatalln(err)
 	}
+
+	reader := bufio.NewReaderSize(conn, 1024)
+
+	response, err := reader.ReadString('\n')
+	if err != nil {
+		log.Fatalln(err)
+	}
+	fmt.Print(response)
+
+	if _, err := conn.Write([]byte("PING\n")); err != nil {
+		log.Fatalln(err)
+	}
+
+	response, err = reader.ReadString('\n')
+	if err != nil {
+		log.Fatalln(err)
+	}
+	fmt.Print(response)
 }
