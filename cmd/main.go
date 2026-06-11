@@ -8,6 +8,8 @@ import (
 	"log"
 	"net"
 	"os"
+	"os/signal"
+	"syscall"
 	"time"
 )
 
@@ -19,10 +21,13 @@ type Config struct {
 }
 
 func main() {
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
 	config := parseConfig()
 
 	if config.Mode == "server" {
-		runServer(config)
+		runServer(ctx, config)
 		return
 	}
 	runClient(config)
@@ -69,25 +74,38 @@ func parseConfig() Config {
 	}
 }
 
-func runServer(cfg Config) {
+func runServer(ctx context.Context, cfg Config) {
 	l, err := net.Listen("tcp", cfg.Port)
 	if err != nil {
 		log.Fatalln(err)
 	}
 	defer l.Close()
 
+	log.Println("Server listening on", cfg.Port)
+
+	go func() {
+		<-ctx.Done()
+		log.Println("Stopping server...")
+		l.Close()
+	}()
+
 	for {
 		conn, err := l.Accept()
 		if err != nil {
-			log.Fatalln(err)
+			select {
+			case <-ctx.Done():
+				log.Println("Server stopped")
+				return
+			default:
+				log.Println("Accept error:", err)
+				continue
+			}
 		}
 
 		go func(c net.Conn) {
 			defer c.Close()
 
-			reader := io.TeeReader(c, os.Stdout)
-
-			_, err := io.Copy(c, reader)
+			_, err := io.Copy(os.Stdout, c)
 			if err != nil {
 				log.Println("Connection error: ", err)
 			}
@@ -106,7 +124,10 @@ func runClient(cfg Config) {
 	}
 	defer conn.Close()
 
-	if _, err := conn.Write([]byte("Test 123 312 Test")); err != nil {
-		log.Fatalln(err)
+	for _, char := range []byte("Test 123 321 123 Test") {
+		if _, err := conn.Write([]byte{char}); err != nil {
+			log.Fatalln(err)
+		}
+		time.Sleep(500 * time.Millisecond)
 	}
 }
