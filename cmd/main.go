@@ -4,16 +4,15 @@ import (
 	"bufio"
 	"context"
 	"fmt"
-	"io"
 	"log"
 	"net"
 	"os"
 	"os/signal"
-	"strings"
 	"syscall"
 	"time"
 
 	"github.com/Miklakapi/gobitx/internal/config"
+	tcpprotocol "github.com/Miklakapi/gobitx/internal/tcpprotocl"
 )
 
 func main() {
@@ -26,86 +25,20 @@ func main() {
 	}
 
 	if config.Mode == "server" {
-		runServer(ctx, config)
+		server, err := tcpprotocol.NewTCPServer(config)
+		if err != nil {
+			log.Fatalln(err)
+			return
+		}
+
+		go func() {
+			<-ctx.Done()
+			server.Close()
+		}()
+		server.Run()
 		return
 	}
 	runClient(config)
-}
-
-func runServer(ctx context.Context, cfg config.Config) {
-	l, err := net.Listen("tcp", cfg.Port)
-	if err != nil {
-		log.Fatalln(err)
-	}
-	defer l.Close()
-
-	log.Println("Server listening on", cfg.Port)
-
-	go func() {
-		<-ctx.Done()
-		log.Println("Stopping server...")
-		l.Close()
-	}()
-
-	for {
-		conn, err := l.Accept()
-		if err != nil {
-			select {
-			case <-ctx.Done():
-				log.Println("Server stopped")
-				return
-			default:
-				log.Println("Accept error:", err)
-				continue
-			}
-		}
-
-		go func(c net.Conn) {
-			defer c.Close()
-
-			log.Println("client connected")
-
-			reader := bufio.NewReaderSize(c, 1024)
-
-			for {
-				line, err := reader.ReadSlice('\n')
-				if err == bufio.ErrBufferFull {
-					log.Println("command too long")
-					return
-				}
-
-				if err == io.EOF {
-					log.Println("client disconnected")
-					return
-				}
-
-				if err != nil {
-					log.Println("read error:", err)
-					return
-				}
-
-				command := strings.TrimSpace(string(line))
-
-				log.Println("client:", command)
-				switch command {
-				case "HELLO":
-					_, err = c.Write([]byte("OK\n"))
-				case "PING":
-					_, err = c.Write([]byte("PONG\n"))
-				case "QUIT":
-					_, err = c.Write([]byte("BYE\n"))
-					return
-				default:
-					_, err = c.Write([]byte("ERR unknown command\n"))
-				}
-
-				if err != nil {
-					log.Println("write error:", err)
-					return
-				}
-			}
-		}(conn)
-	}
 }
 
 func runClient(cfg config.Config) {
