@@ -3,7 +3,6 @@ package main
 import (
 	"bufio"
 	"context"
-	"flag"
 	"fmt"
 	"io"
 	"log"
@@ -13,20 +12,18 @@ import (
 	"strings"
 	"syscall"
 	"time"
-)
 
-type Config struct {
-	Mode        string
-	Destination string
-	Duration    time.Duration
-	Port        string
-}
+	"github.com/Miklakapi/gobitx/internal/config"
+)
 
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	config := parseConfig()
+	config, err := config.New()
+	if err != nil {
+		log.Fatalln(err)
+	}
 
 	if config.Mode == "server" {
 		runServer(ctx, config)
@@ -35,48 +32,7 @@ func main() {
 	runClient(config)
 }
 
-func parseConfig() Config {
-	if len(os.Args) < 2 {
-		log.Fatalln("Missing command: use 'server' or 'client'")
-	}
-
-	mode := os.Args[1]
-	if mode != "server" && mode != "client" {
-		log.Fatalln("Invalid command: use 'server' or 'client'")
-	}
-
-	flags := flag.NewFlagSet(mode, flag.ExitOnError)
-
-	var duration time.Duration
-	var port int
-
-	flags.DurationVar(&duration, "duration", 10*time.Second, "Test duration, for example 10s, 30s or 1m")
-	flags.IntVar(&port, "port", 5200, "TCP port to listen on or connect to")
-
-	err := flags.Parse(os.Args[2:])
-	if err != nil {
-		log.Fatalln(err)
-	}
-
-	destination := ""
-
-	if mode == "client" {
-		if flags.NArg() < 1 {
-			log.Fatalln("Missing destination address: use 'gobitx client <host>'")
-		}
-
-		destination = flags.Arg(0)
-	}
-
-	return Config{
-		Mode:        mode,
-		Destination: destination,
-		Duration:    duration,
-		Port:        fmt.Sprint(":", port),
-	}
-}
-
-func runServer(ctx context.Context, cfg Config) {
+func runServer(ctx context.Context, cfg config.Config) {
 	l, err := net.Listen("tcp", cfg.Port)
 	if err != nil {
 		log.Fatalln(err)
@@ -152,7 +108,7 @@ func runServer(ctx context.Context, cfg Config) {
 	}
 }
 
-func runClient(cfg Config) {
+func runClient(cfg config.Config) {
 	var d net.Dialer
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
