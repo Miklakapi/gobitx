@@ -63,7 +63,7 @@ func (s *TCPServer) handleConnection(c net.Conn) {
 	if s.clientConnected {
 		s.mu.Unlock()
 		log.Println("Rejected client: another client is already connected")
-		c.Write([]byte("ERR server busy: another client is already connected\n"))
+		writeWithErrorLog(c, "ERR server busy: another client is already connected\n")
 		return
 	}
 	s.clientConnected = true
@@ -97,23 +97,27 @@ func (s *TCPServer) handleConnection(c net.Conn) {
 		}
 
 		command := strings.TrimSpace(string(line))
-
 		log.Println("Client:", command)
-		switch command {
-		case "HELLO":
-			_, err = c.Write([]byte("OK\n"))
-		case "PING":
-			_, err = c.Write([]byte("PONG\n"))
-		case "QUIT":
-			_, err = c.Write([]byte("BYE\n"))
-			return
-		default:
-			_, err = c.Write([]byte("ERR unknown command\n"))
-		}
 
-		if err != nil {
-			log.Println("Write error:", err)
-			return
-		}
+		handleCommands(c, command)
+	}
+}
+
+func handleCommands(c net.Conn, command string) {
+	switch command {
+	case "PING":
+		writeWithErrorLog(c, "PONG\n")
+	case "QUIT":
+		writeWithErrorLog(c, "BYE\n")
+		return
+	default:
+		writeWithErrorLog(c, "ERR unknown command\n")
+	}
+}
+
+func writeWithErrorLog(c net.Conn, data string) {
+	_, err := c.Write([]byte(data))
+	if err != nil {
+		log.Println("Write error:", err)
 	}
 }
