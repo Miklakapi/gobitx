@@ -52,6 +52,7 @@ func New() (Config, error) {
 	}
 
 	cfg.Protocol = protocol
+	cfg.Verbose = verbose
 
 	if cfg.Mode == "client" {
 		if flags.NArg() < 1 {
