@@ -4,7 +4,9 @@ import (
 	"bufio"
 	"context"
 	"fmt"
+	"log/slog"
 	"net"
+	"strings"
 	"time"
 
 	"github.com/Miklakapi/gobitx/internal/config"
@@ -31,15 +33,73 @@ func (c TCPClient) Run() error {
 	}
 	defer conn.Close()
 
-	reader := bufio.NewReaderSize(conn, 1024)
+	reader := bufio.NewReaderSize(conn, 512)
 
-	writeWithErrorLog(conn, "PING\n")
-
-	response, err := reader.ReadString('\n')
+	ready, err := handshake(conn, reader)
 	if err != nil {
 		return err
 	}
-	fmt.Print(response)
+	if !ready {
+		return fmt.Errorf("server is busy")
+	}
+
+	err = latencyTest(conn, reader)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func handshake(c net.Conn, reader *bufio.Reader) (bool, error) {
+	_, err := c.Write([]byte("HELLO\n"))
+	if err != nil {
+		return false, err
+	}
+
+	response, err := reader.ReadString('\n')
+	if err != nil {
+		return false, err
+	}
+
+	trimmedResponse := strings.TrimSpace(response)
+
+	switch trimmedResponse {
+	case "OK":
+		return true, nil
+	case "ERR server busy":
+		return false, nil
+	default:
+		return false, fmt.Errorf("invalid handshake response: %q", trimmedResponse)
+	}
+}
+
+func latencyTest(c net.Conn, reader *bufio.Reader) error {
+	slog.Debug("latency test started")
+
+	message := []byte("PING\n")
+	measurements := make([]time.Duration, 0, 20)
+
+	for range 20 {
+		start := time.Now()
+
+		_, err := c.Write(message)
+		if err != nil {
+			return err
+		}
+
+		response, err := reader.ReadString('\n')
+		if err != nil {
+			return err
+		}
+		latency := time.Since(start)
+
+		if strings.TrimSpace(response) != "PONG" {
+			return fmt.Errorf("invalid response from server")
+		}
+
+		measurements = append(measurements, latency)
+	}
 
 	return nil
 }
