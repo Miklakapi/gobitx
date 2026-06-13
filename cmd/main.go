@@ -8,7 +8,7 @@ import (
 	"syscall"
 
 	"github.com/Miklakapi/gobitx/internal/config"
-	tcpprotocol "github.com/Miklakapi/gobitx/internal/tcpprotocl"
+	"github.com/Miklakapi/gobitx/internal/tcpprotocol"
 )
 
 func main() {
@@ -35,11 +35,16 @@ func handleTCP(ctx context.Context, cfg config.Config) {
 			<-ctx.Done()
 			server.Close()
 		}()
+
 		server.Run()
+
 		return
 	}
 
 	client := tcpprotocol.NewTCPClient(cfg)
 
-	client.Run()
+	err := client.Run()
+	if err != nil {
+		log.Fatalln(err)
+	}
 }
