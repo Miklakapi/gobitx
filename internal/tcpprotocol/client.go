@@ -20,6 +20,15 @@ type LatencyResult struct {
 	Max     time.Duration
 }
 
+type TCPDownloadResult struct {
+	Bytes     int64
+	Duration  time.Duration
+	AvgMbps   float64
+	MinMbps   float64
+	MaxMbps   float64
+	Stability float64
+}
+
 type TCPClient struct {
 	cfg config.Config
 }
@@ -41,7 +50,7 @@ func (c TCPClient) Run() error {
 	}
 	defer conn.Close()
 
-	reader := bufio.NewReaderSize(conn, 512)
+	reader := bufio.NewReader(conn)
 
 	ready, err := handshake(conn, reader)
 	if err != nil {
@@ -62,6 +71,18 @@ func (c TCPClient) Run() error {
 		latencyResult.Min,
 		latencyResult.Avg,
 		latencyResult.Max,
+	)
+
+	downloadResult, err := downloadTest(conn, reader, c.cfg.Duration)
+	if err != nil {
+		return err
+	}
+
+	fmt.Printf(
+		"TCP download: bytes=%d duration=%s avg=%.2f Mbps\n",
+		downloadResult.Bytes,
+		downloadResult.Duration,
+		downloadResult.AvgMbps,
 	)
 
 	return nil
@@ -157,6 +178,57 @@ func calculateLatencyResult(measurements []time.Duration) LatencyResult {
 		Avg:     avgLatency,
 		Max:     maxLatency,
 	}
+}
+
+func downloadTest(c net.Conn, reader *bufio.Reader, duration time.Duration) (TCPDownloadResult, error) {
+	slog.Debug("download test started")
+
+	command := fmt.Sprintf("TCP_DOWNLOAD %s\n", duration)
+
+	_, err := c.Write([]byte(command))
+	if err != nil {
+		return TCPDownloadResult{}, err
+	}
+
+	response, err := reader.ReadString('\n')
+	if err != nil {
+		return TCPDownloadResult{}, err
+	}
+	if strings.TrimSpace(response) != "READY" {
+		return TCPDownloadResult{}, fmt.Errorf("invalid response from server: %q", strings.TrimSpace(response))
+	}
+
+	buffer := make([]byte, 64*1024)
+
+	start := time.Now()
+	deadline := start.Add(duration)
+
+	var totalBytes int64
+
+	for time.Now().Before(deadline) {
+		n, err := reader.Read(buffer)
+		if err != nil {
+			return TCPDownloadResult{}, err
+		}
+
+		totalBytes += int64(n)
+	}
+
+	elapsed := time.Since(start)
+	avgMbps := float64(totalBytes*8) / elapsed.Seconds() / 1_000_000
+
+	result := TCPDownloadResult{
+		Bytes:    totalBytes,
+		Duration: elapsed,
+		AvgMbps:  avgMbps,
+	}
+
+	err = sendResult(c, reader, "tcp_download", result)
+	if err != nil {
+		return result, err
+	}
+
+	return result, nil
 }
 
 func sendResult(c net.Conn, reader *bufio.Reader, testType string, result any) error {

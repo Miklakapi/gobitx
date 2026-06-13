@@ -10,6 +10,7 @@ import (
 	"net"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/Miklakapi/gobitx/internal/config"
 )
@@ -123,6 +124,28 @@ func handleCommands(c net.Conn, command string) bool {
 		writeWithErrorLog(c, "PONG\n")
 		return false
 
+	case "TCP_DOWNLOAD":
+		if len(parts) < 2 {
+			writeWithErrorLog(c, "ERR invalid duration\n")
+			return false
+		}
+
+		duration, err := time.ParseDuration(parts[1])
+		if err != nil {
+			writeWithErrorLog(c, "ERR invalid duration\n")
+			return false
+		}
+
+		writeWithErrorLog(c, "READY\n")
+
+		_, err = sendRawData(c, duration)
+		if err != nil {
+			slog.Error("download send failed", "err", err)
+			return true
+		}
+
+		return false
+
 	case "RESULT":
 		if len(parts) < 3 {
 			writeWithErrorLog(c, "ERR invalid result\n")
@@ -161,10 +184,44 @@ func showResults(resultType string, data string) {
 			result.Avg,
 			result.Max,
 		)
+	case "tcp_download":
+		var result TCPDownloadResult
+
+		err := json.Unmarshal([]byte(data), &result)
+		if err != nil {
+			slog.Error("failed to decode download result", "err", err)
+			return
+		}
+
+		fmt.Printf(
+			"TCP download: bytes=%d duration=%s avg=%.2f Mbps\n",
+			result.Bytes,
+			result.Duration,
+			result.AvgMbps,
+		)
 
 	default:
 		fmt.Println("Unknown result type:", resultType)
 	}
+}
+
+func sendRawData(c net.Conn, duration time.Duration) (int64, error) {
+	buffer := make([]byte, 64*1024)
+
+	var totalBytes int64
+
+	deadline := time.Now().Add(duration)
+
+	for time.Now().Before(deadline) {
+		n, err := c.Write(buffer)
+		if err != nil {
+			return totalBytes, err
+		}
+
+		totalBytes += int64(n)
+	}
+
+	return totalBytes, nil
 }
 
 func writeWithErrorLog(c net.Conn, data string) {
