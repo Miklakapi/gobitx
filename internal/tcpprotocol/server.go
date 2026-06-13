@@ -3,8 +3,9 @@ package tcpprotocol
 import (
 	"bufio"
 	"errors"
+	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"net"
 	"strings"
 	"sync"
@@ -30,7 +31,7 @@ func NewTCPServer(cfg config.Config) (server *TCPServer, err error) {
 		listener: l,
 	}
 
-	log.Println("Server listening on", cfg.Port)
+	fmt.Println("Server listening on", cfg.Port)
 
 	return server, nil
 }
@@ -40,10 +41,10 @@ func (s *TCPServer) Run() {
 		conn, err := s.listener.Accept()
 		if err != nil {
 			if errors.Is(err, net.ErrClosed) {
-				log.Println("Server stopped")
+				fmt.Println("Server stopped")
 				return
 			}
-			log.Println("Accept error:", err)
+			slog.Error("accept error:", "err", err)
 			continue
 		}
 
@@ -52,7 +53,6 @@ func (s *TCPServer) Run() {
 }
 
 func (s *TCPServer) Close() {
-	log.Println("Stopping server...")
 	s.listener.Close()
 }
 
@@ -62,7 +62,7 @@ func (s *TCPServer) handleConnection(c net.Conn) {
 	s.mu.Lock()
 	if s.clientConnected {
 		s.mu.Unlock()
-		log.Println("Rejected client: another client is already connected")
+		slog.Debug("client rejected", "reason", "another client is already connected")
 		writeWithErrorLog(c, "ERR server busy: another client is already connected\n")
 		return
 	}
@@ -75,41 +75,39 @@ func (s *TCPServer) handleConnection(c net.Conn) {
 		s.mu.Unlock()
 	}()
 
-	log.Println("Client connected")
+	slog.Debug("client connected")
 
 	reader := bufio.NewReaderSize(c, 1024)
 
 	for {
 		line, err := reader.ReadSlice('\n')
 		if err == bufio.ErrBufferFull {
-			log.Println("Command too long")
+			slog.Warn("command too long")
 			return
 		}
 
 		if err == io.EOF {
-			log.Println("Client disconnected")
+			slog.Debug("client disconnected")
 			return
 		}
 
 		if err != nil {
-			log.Println("Read error:", err)
+			slog.Error("read error:", "err", err)
 			return
 		}
 
 		command := strings.TrimSpace(string(line))
-		log.Println("Client:", command)
-
+		slog.Debug("command triggered", "command", command)
 		handleCommands(c, command)
 	}
 }
 
 func handleCommands(c net.Conn, command string) {
 	switch command {
+	case "HELLO":
+		writeWithErrorLog(c, "OK\n")
 	case "PING":
 		writeWithErrorLog(c, "PONG\n")
-	case "QUIT":
-		writeWithErrorLog(c, "BYE\n")
-		return
 	default:
 		writeWithErrorLog(c, "ERR unknown command\n")
 	}
@@ -118,6 +116,6 @@ func handleCommands(c net.Conn, command string) {
 func writeWithErrorLog(c net.Conn, data string) {
 	_, err := c.Write([]byte(data))
 	if err != nil {
-		log.Println("Write error:", err)
+		slog.Error("write failed", "err", err)
 	}
 }
