@@ -2,6 +2,7 @@ package tcpprotocol
 
 import (
 	"bufio"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -63,7 +64,7 @@ func (s *TCPServer) handleConnection(c net.Conn) {
 	if s.clientConnected {
 		s.mu.Unlock()
 		slog.Debug("client rejected", "reason", "another client is already connected")
-		writeWithErrorLog(c, "ERR server busy: another client is already connected\n")
+		writeWithErrorLog(c, "ERR server busy\n")
 		return
 	}
 	s.clientConnected = true
@@ -98,18 +99,71 @@ func (s *TCPServer) handleConnection(c net.Conn) {
 
 		command := strings.TrimSpace(string(line))
 		slog.Debug("command triggered", "command", command)
-		handleCommands(c, command)
+
+		shouldClose := handleCommands(c, command)
+		if shouldClose {
+			return
+		}
 	}
 }
 
-func handleCommands(c net.Conn, command string) {
-	switch command {
+func handleCommands(c net.Conn, command string) bool {
+	parts := strings.Fields(command)
+	if len(parts) == 0 {
+		writeWithErrorLog(c, "ERR empty command\n")
+		return false
+	}
+
+	switch parts[0] {
 	case "HELLO":
 		writeWithErrorLog(c, "OK\n")
+		return false
+
 	case "PING":
 		writeWithErrorLog(c, "PONG\n")
+		return false
+
+	case "RESULT":
+		if len(parts) < 3 {
+			writeWithErrorLog(c, "ERR invalid result\n")
+			return false
+		}
+
+		showResults(parts[1], parts[2])
+		writeWithErrorLog(c, "OK\n")
+		return false
+
+	case "QUIT":
+		writeWithErrorLog(c, "BYE\n")
+		return true
+
 	default:
 		writeWithErrorLog(c, "ERR unknown command\n")
+		return false
+	}
+}
+
+func showResults(resultType string, data string) {
+	switch resultType {
+	case "tcp_latency":
+		var result LatencyResult
+
+		err := json.Unmarshal([]byte(data), &result)
+		if err != nil {
+			slog.Error("failed to decode latency result", "err", err)
+			return
+		}
+
+		fmt.Printf(
+			"TCP latency result: samples=%d min=%s avg=%s max=%s\n",
+			result.Samples,
+			result.Min,
+			result.Avg,
+			result.Max,
+		)
+
+	default:
+		fmt.Println("Unknown result type:", resultType)
 	}
 }
 
