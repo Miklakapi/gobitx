@@ -5,8 +5,6 @@ type Command uint8
 const (
 	CommandUnknown Command = iota
 
-	CommandHello
-	CommandOK
 	CommandError
 
 	CommandPing
@@ -24,10 +22,6 @@ const (
 
 func (c Command) String() string {
 	switch c {
-	case CommandHello:
-		return "HELLO"
-	case CommandOK:
-		return "OK"
 	case CommandError:
 		return "ERROR"
 	case CommandPing:
@@ -53,7 +47,7 @@ func (c Command) String() string {
 
 func (c Command) IsResponse() bool {
 	switch c {
-	case CommandOK, CommandError, CommandPong, CommandReady:
+	case CommandError, CommandPong, CommandReady:
 		return true
 	default:
 		return false
@@ -62,8 +56,7 @@ func (c Command) IsResponse() bool {
 
 func (c Command) IsRequest() bool {
 	switch c {
-	case CommandHello,
-		CommandPing,
+	case CommandPing,
 		CommandDownload,
 		CommandUpload,
 		CommandQuality,

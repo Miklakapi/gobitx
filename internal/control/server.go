@@ -2,6 +2,7 @@ package control
 
 import (
 	"errors"
+	"io"
 	"log/slog"
 	"net"
 	"sync"
@@ -60,20 +61,7 @@ func (s *Server) handleConnection(conn net.Conn) {
 
 		slog.Debug("client rejected", "reason", "another client is already connected")
 
-		errorFrame, err := protocol.NewFrame(protocol.CommandError, protocol.ErrorPayload{
-			Code:    protocol.ErrorServerBusy,
-			Message: "server is busy",
-		})
-		if err != nil {
-			slog.Error("failed to build error frame", "err", err)
-			return
-		}
-
-		err = codec.WriteFrame(errorFrame)
-		if err != nil {
-			slog.Error("failed to write error frame", "err", err)
-			return
-		}
+		writeProtocolError(codec, protocol.ErrorServerBusy, "server is budy")
 
 		return
 	}
@@ -87,4 +75,71 @@ func (s *Server) handleConnection(conn net.Conn) {
 	}()
 
 	slog.Debug("client connected")
+
+	for {
+		frame, err := codec.ReadFrame()
+		if err == io.EOF {
+			slog.Debug("client disconnected")
+			return
+		}
+
+		if errors.Is(err, protocol.ErrInvalidMagic) {
+			slog.Warn("invalid protocol magic")
+			writeProtocolError(codec, protocol.ErrorInvalidMagic, "invalid protocol magic")
+			return
+		}
+
+		if errors.Is(err, protocol.ErrUnsupportedVersion) {
+			slog.Warn("unsupported protocol version", "err", err)
+			writeProtocolError(codec, protocol.ErrorUnsupportedVersion, "unsupported protocol version")
+			return
+		}
+
+		if errors.Is(err, protocol.ErrPayloadTooLarge) {
+			slog.Warn("payload too large", "err", err)
+			writeProtocolError(codec, protocol.ErrorInvalidPayload, "payload too large")
+			return
+		}
+
+		if err != nil {
+			slog.Error("failed to read frame", "err", err)
+			return
+		}
+
+		shouldClose := handleCommand(codec, frame)
+		if shouldClose {
+			return
+		}
+	}
+}
+
+func handleCommand(codec *protocol.Codec, frame protocol.Frame) bool {
+	switch frame.Command {
+	case protocol.CommandPing:
+		writeProtocol(codec, protocol.CommandPong, nil)
+		return false
+	case protocol.CommandQuit:
+		return true
+	}
+	return false
+}
+
+func writeProtocolError(codec *protocol.Codec, code protocol.ErrorCode, message string) {
+	writeProtocol(codec, protocol.CommandError, protocol.ErrorPayload{
+		Code:    code,
+		Message: message,
+	})
+}
+
+func writeProtocol(codec *protocol.Codec, command protocol.Command, payload any) {
+	frame, err := protocol.NewFrame(command, payload)
+	if err != nil {
+		slog.Error("failed to build frame", "err", err)
+		return
+	}
+
+	err = codec.WriteFrame(frame)
+	if err != nil {
+		slog.Error("failed to write frame", "err", err)
+	}
 }
