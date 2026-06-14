@@ -61,7 +61,7 @@ func (s *Server) handleConnection(conn net.Conn) {
 
 		slog.Debug("client rejected", "reason", "another client is already connected")
 
-		writeProtocolError(codec, protocol.ErrorServerBusy, "server is budy")
+		writeProtocolError(codec, protocol.ErrorServerBusy, "server is busy")
 
 		return
 	}
@@ -118,8 +118,19 @@ func handleCommand(codec *protocol.Codec, frame protocol.Frame) bool {
 	case protocol.CommandPing:
 		writeProtocol(codec, protocol.CommandPong, nil)
 		return false
+	case protocol.CommandDownload:
+		return false
+	case protocol.CommandUpload:
+		return false
+	case protocol.CommandQuality:
+		return false
+	case protocol.CommandResult:
+		return false
 	case protocol.CommandQuit:
+		writeProtocol(codec, protocol.CommandOK, nil)
 		return true
+	default:
+		writeProtocolError(codec, protocol.ErrorInvalidCommand, "unknown command")
 	}
 	return false
 }
