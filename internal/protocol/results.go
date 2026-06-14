@@ -28,12 +28,12 @@ type TransferResult struct {
 }
 
 type QualityResult struct {
-	SentPackets     int64   `json:"sent_packets"`
-	ReceivedPackets int64   `json:"received_packets"`
-	LostPackets     int64   `json:"lost_packets"`
-	LossPercent     float64 `json:"loss_percent"`
-	AvgJitterNS     int64   `json:"avg_jitter_ns"`
-	MaxJitterNS     int64   `json:"max_jitter_ns"`
-	OutOfOrder      int64   `json:"out_of_order"`
-	ReceivedMbps    float64 `json:"received_mbps"`
+	SentPackets     int64         `json:"sent_packets"`
+	ReceivedPackets int64         `json:"received_packets"`
+	LostPackets     int64         `json:"lost_packets"`
+	LossPercent     float64       `json:"loss_percent"`
+	AvgJitterNS     time.Duration `json:"avg_jitter_ns"`
+	MaxJitterNS     time.Duration `json:"max_jitter_ns"`
+	OutOfOrder      int64         `json:"out_of_order"`
+	ReceivedMbps    float64       `json:"received_mbps"`
 }

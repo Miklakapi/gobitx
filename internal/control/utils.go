@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"strings"
 
 	"github.com/Miklakapi/gobitx/internal/protocol"
 )
@@ -93,4 +94,48 @@ func decodeErrorFrame(frame protocol.Frame) error {
 		return fmt.Errorf("server error: %s", errorPayload.Message)
 	}
 	return nil
+}
+
+func showLatencyResult(data protocol.LatencyResult) {
+	fmt.Printf(
+		"Latency: samples=%d min=%s avg=%s max=%s\n",
+		data.Samples,
+		data.MinNS,
+		data.AvgNS,
+		data.MaxNS,
+	)
+}
+
+func showTransferResult(transferType protocol.ResultType, data protocol.TransferResult) {
+	transferTypeLabel := string(transferType)
+
+	if transferTypeLabel != "" {
+		transferTypeLabel = strings.ToUpper(transferTypeLabel[:1]) + transferTypeLabel[1:]
+	}
+
+	fmt.Printf(
+		"%s: bytes=%d duration=%s min=%f avg=%f max=%f stability=%f\n",
+		transferTypeLabel,
+		data.Bytes,
+		data.DurationNS,
+		data.AvgMbps,
+		data.MinMbps,
+		data.MaxMbps,
+		data.Stability,
+	)
+}
+
+func showQualityResult(data protocol.QualityResult) {
+	fmt.Printf(
+		"Quality: sent_packets=%d received_packets=%d lost_packets=%d loss_percent=%.2f "+
+			"avg_jitter=%s max_jitter=%s out_of_order=%d received_mbps=%.2f\n",
+		data.SentPackets,
+		data.ReceivedPackets,
+		data.LostPackets,
+		data.LossPercent,
+		data.AvgJitterNS,
+		data.MaxJitterNS,
+		data.OutOfOrder,
+		data.ReceivedMbps,
+	)
 }

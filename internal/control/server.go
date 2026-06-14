@@ -156,13 +156,7 @@ func handleCommandResult(frame protocol.Frame) error {
 			return err
 		}
 
-		fmt.Printf(
-			"Latency: samples=%d min=%s avg=%s max=%s\n",
-			data.Samples,
-			data.MinNS,
-			data.AvgNS,
-			data.MaxNS,
-		)
+		showLatencyResult(data)
 
 		return nil
 
@@ -174,15 +168,7 @@ func handleCommandResult(frame protocol.Frame) error {
 			return err
 		}
 
-		fmt.Printf(
-			"latency: bytes=%d duration=%s min=%f avg=%f max=%f stability=%f\n",
-			data.Bytes,
-			data.DurationNS,
-			data.AvgMbps,
-			data.MinMbps,
-			data.MaxMbps,
-			data.Stability,
-		)
+		showTransferResult(result.Type, data)
 
 		return nil
 
@@ -193,7 +179,7 @@ func handleCommandResult(frame protocol.Frame) error {
 			return err
 		}
 
-		fmt.Printf("TODO")
+		showQualityResult(data)
 
 		return nil
 
