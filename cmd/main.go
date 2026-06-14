@@ -43,7 +43,7 @@ func main() {
 		return
 	}
 
-	client := control.NewClient(cfg)
+	client := control.NewClient(ctx, cfg)
 
 	err = client.Run()
 	if err != nil {

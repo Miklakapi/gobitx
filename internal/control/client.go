@@ -14,25 +14,32 @@ import (
 
 type Client struct {
 	cfg config.Config
+	ctx context.Context
 }
 
-func NewClient(cfg config.Config) Client {
+func NewClient(ctx context.Context, cfg config.Config) Client {
 	return Client{
 		cfg: cfg,
+		ctx: ctx,
 	}
 }
 
 func (c Client) Run() error {
 	var d net.Dialer
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	timeoutCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	conn, err := d.DialContext(ctx, "tcp", fmt.Sprint(c.cfg.Destination, c.cfg.Port))
+	conn, err := d.DialContext(timeoutCtx, "tcp", fmt.Sprint(c.cfg.Destination, c.cfg.Port))
 	if err != nil {
 		return err
 	}
 	defer conn.Close()
+
+	go func() {
+		<-c.ctx.Done()
+		conn.Close()
+	}()
 
 	codec := protocol.NewCodec(conn)
 
@@ -52,6 +59,12 @@ func (c Client) Run() error {
 		latencyResult.AvgNS,
 		latencyResult.MaxNS,
 	)
+
+	// TODO: Download test
+	// TODO: Show results
+
+	// TODO: Upload test
+	// TODO: Show results
 
 	return nil
 }
@@ -138,6 +151,11 @@ func latencyTest(codec *protocol.Codec) (protocol.LatencyResult, error) {
 
 	result := calculateLatencyResult(measurements)
 
+	err = sendResult(codec, protocol.ResultLatency, result)
+	if err != nil {
+		return result, err
+	}
+
 	return result, nil
 }
 
@@ -169,5 +187,48 @@ func calculateLatencyResult(measurements []time.Duration) protocol.LatencyResult
 		MinNS:   minLatency,
 		AvgNS:   avgLatency,
 		MaxNS:   maxLatency,
+	}
+}
+
+func sendResult(codec *protocol.Codec, resultType protocol.ResultType, result any) error {
+	resultData, err := json.Marshal(result)
+	if err != nil {
+		return err
+	}
+
+	frame, err := protocol.NewFrame(protocol.CommandResult, protocol.ResultPayload{
+		Type: resultType,
+		Data: resultData,
+	})
+	if err != nil {
+		return err
+	}
+
+	err = codec.WriteFrame(frame)
+	if err != nil {
+		return err
+	}
+
+	responseFrame, err := codec.ReadFrame()
+	if err != nil {
+		return err
+	}
+
+	switch responseFrame.Command {
+	case protocol.CommandOK:
+		return nil
+
+	case protocol.CommandError:
+		var errorPayload protocol.ErrorPayload
+
+		err := json.Unmarshal(responseFrame.Payload, &errorPayload)
+		if err != nil {
+			return fmt.Errorf("failed to decode error response: %w", err)
+		}
+
+		return fmt.Errorf("server error: %s", errorPayload.Message)
+
+	default:
+		return fmt.Errorf("invalid result response: %d", responseFrame.Command)
 	}
 }
