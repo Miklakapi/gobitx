@@ -45,8 +45,8 @@ func (s *Server) Run() {
 	}
 }
 
-func (s *Server) Close() {
-	s.listener.Close()
+func (s *Server) Close() error {
+	return s.listener.Close()
 }
 
 func (s *Server) handleConnection(conn net.Conn) {
@@ -61,7 +61,7 @@ func (s *Server) handleConnection(conn net.Conn) {
 		slog.Debug("client rejected", "reason", "another client is already connected")
 
 		errorFrame, err := protocol.NewFrame(protocol.CommandError, protocol.ErrorPayload{
-			Code:    "server_busy",
+			Code:    protocol.ErrorServerBusy,
 			Message: "server is busy",
 		})
 		if err != nil {

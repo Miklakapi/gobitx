@@ -22,7 +22,7 @@ func NewCodec(rw io.ReadWriter) *Codec {
 func (c *Codec) WriteFrame(frame Frame) error {
 	payloadLength := len(frame.Payload)
 	if payloadLength > MaxPayloadSize {
-		return fmt.Errorf("payload too large: %d bytes", payloadLength)
+		return fmt.Errorf("%w: %d bytes", ErrPayloadTooLarge, payloadLength)
 	}
 
 	header := make([]byte, HeaderSize)
@@ -56,18 +56,18 @@ func (c *Codec) ReadFrame() (Frame, error) {
 	}
 
 	if !slices.Equal(header[:2], ProtocolMagic[:]) {
-		return Frame{}, fmt.Errorf("invalid protocol magic")
+		return Frame{}, ErrInvalidMagic
 	}
 
 	if header[2] != ProtocolVersion {
-		return Frame{}, fmt.Errorf("unsupported protocol version: %d", header[2])
+		return Frame{}, fmt.Errorf("%w: %d", ErrUnsupportedVersion, header[2])
 	}
 
 	command := Command(header[3])
 
 	payloadLength := binary.BigEndian.Uint32(header[4:8])
 	if payloadLength > MaxPayloadSize {
-		return Frame{}, fmt.Errorf("payload too large: %d bytes", payloadLength)
+		return Frame{}, fmt.Errorf("%w: %d bytes", ErrPayloadTooLarge, payloadLength)
 	}
 
 	payload := make([]byte, payloadLength)
@@ -88,6 +88,10 @@ func writeFull(w io.Writer, data []byte) error {
 		n, err := w.Write(data)
 		if err != nil {
 			return err
+		}
+
+		if n == 0 {
+			return io.ErrShortWrite
 		}
 
 		data = data[n:]

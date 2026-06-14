@@ -3,8 +3,8 @@ package protocol
 import "encoding/json"
 
 type ErrorPayload struct {
-	Code    string `json:"code"`
-	Message string `json:"message"`
+	Code    ErrorCode `json:"code"`
+	Message string    `json:"message"`
 }
 
 type ReadyPayload struct {
