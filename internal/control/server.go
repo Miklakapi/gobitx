@@ -1,7 +1,9 @@
 package control
 
 import (
+	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net"
@@ -125,6 +127,10 @@ func handleCommand(codec *protocol.Codec, frame protocol.Frame) bool {
 	case protocol.CommandQuality:
 		return false
 	case protocol.CommandResult:
+		if err := handleCommandResult(frame); err != nil {
+			return false
+		}
+		writeProtocol(codec, protocol.CommandOK, nil)
 		return false
 	case protocol.CommandQuit:
 		writeProtocol(codec, protocol.CommandOK, nil)
@@ -133,4 +139,67 @@ func handleCommand(codec *protocol.Codec, frame protocol.Frame) bool {
 		writeProtocolError(codec, protocol.ErrorInvalidCommand, "unknown command")
 	}
 	return false
+}
+
+func handleCommandResult(frame protocol.Frame) error {
+	var result protocol.ResultPayload
+
+	if err := json.Unmarshal(frame.Payload, &result); err != nil {
+		return err
+	}
+
+	switch result.Type {
+	case protocol.ResultLatency:
+		var data protocol.LatencyResult
+
+		if err := json.Unmarshal(result.Data, &data); err != nil {
+			return err
+		}
+
+		fmt.Printf(
+			"Latency: samples=%d min=%s avg=%s max=%s\n",
+			data.Samples,
+			data.MinNS,
+			data.AvgNS,
+			data.MaxNS,
+		)
+
+		return nil
+
+	case protocol.ResultUpload:
+	case protocol.ResultDownload:
+		var data protocol.TransferResult
+
+		if err := json.Unmarshal(result.Data, &data); err != nil {
+			return err
+		}
+
+		fmt.Printf(
+			"latency: bytes=%d duration=%s min=%f avg=%f max=%f stability=%f\n",
+			data.Bytes,
+			data.DurationNS,
+			data.AvgMbps,
+			data.MinMbps,
+			data.MaxMbps,
+			data.Stability,
+		)
+
+		return nil
+
+	case protocol.ResultQuality:
+		var data protocol.QualityResult
+
+		if err := json.Unmarshal(result.Data, &data); err != nil {
+			return err
+		}
+
+		fmt.Printf("TODO")
+
+		return nil
+
+	default:
+		return fmt.Errorf("unknown result type")
+	}
+
+	return nil
 }

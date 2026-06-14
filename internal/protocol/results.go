@@ -19,12 +19,12 @@ type LatencyResult struct {
 }
 
 type TransferResult struct {
-	Bytes      int64   `json:"bytes"`
-	DurationNS int64   `json:"duration_ns"`
-	AvgMbps    float64 `json:"avg_mbps"`
-	MinMbps    float64 `json:"min_mbps"`
-	MaxMbps    float64 `json:"max_mbps"`
-	Stability  float64 `json:"stability"`
+	Bytes      int64         `json:"bytes"`
+	DurationNS time.Duration `json:"duration_ns"`
+	AvgMbps    float64       `json:"avg_mbps"`
+	MinMbps    float64       `json:"min_mbps"`
+	MaxMbps    float64       `json:"max_mbps"`
+	Stability  float64       `json:"stability"`
 }
 
 type QualityResult struct {

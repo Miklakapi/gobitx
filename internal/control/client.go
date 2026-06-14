@@ -52,7 +52,7 @@ func (c Client) Run() error {
 	}
 
 	fmt.Printf(
-		"TCP latency: samples=%d min=%s avg=%s max=%s\n",
+		"Latency: samples=%d min=%s avg=%s max=%s\n",
 		latencyResult.Samples,
 		latencyResult.MinNS,
 		latencyResult.AvgNS,
