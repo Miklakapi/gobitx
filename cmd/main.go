@@ -3,14 +3,13 @@ package main
 import (
 	"context"
 	"fmt"
-	"log/slog"
 	"os"
 	"os/signal"
 	"syscall"
 
 	"github.com/Miklakapi/gobitx/internal/config"
+	"github.com/Miklakapi/gobitx/internal/control"
 	"github.com/Miklakapi/gobitx/internal/logger"
-	"github.com/Miklakapi/gobitx/internal/tcpprotocol"
 )
 
 func main() {
@@ -25,20 +24,11 @@ func main() {
 
 	logger.SetupLogger(cfg.Verbose)
 
-	if cfg.Protocol == "tcp" {
-		err := handleTCP(ctx, cfg)
-		if err != nil {
-			slog.Error("fatal error", "err", err)
-			os.Exit(1)
-		}
-	}
-}
-
-func handleTCP(ctx context.Context, cfg config.Config) error {
 	if cfg.Mode == "server" {
-		server, err := tcpprotocol.NewTCPServer(cfg)
+		server, err := control.NewServer(cfg)
 		if err != nil {
-			return err
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
 		}
 
 		go func() {
@@ -46,12 +36,18 @@ func handleTCP(ctx context.Context, cfg config.Config) error {
 			server.Close()
 		}()
 
+		fmt.Println("Application started on port:", cfg.Port)
 		server.Run()
+		fmt.Println("Application stopped")
 
-		return nil
+		return
 	}
 
-	client := tcpprotocol.NewTCPClient(cfg)
+	client := control.NewClient(cfg)
 
-	return client.Run()
+	err = client.Run()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
 }

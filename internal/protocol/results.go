@@ -1,5 +1,7 @@
 package protocol
 
+import "time"
+
 type ResultType string
 
 const (
@@ -10,10 +12,10 @@ const (
 )
 
 type LatencyResult struct {
-	Samples int   `json:"samples"`
-	MinNS   int64 `json:"min_ns"`
-	AvgNS   int64 `json:"avg_ns"`
-	MaxNS   int64 `json:"max_ns"`
+	Samples int           `json:"samples"`
+	MinNS   time.Duration `json:"min_ns"`
+	AvgNS   time.Duration `json:"avg_ns"`
+	MaxNS   time.Duration `json:"max_ns"`
 }
 
 type TransferResult struct {

@@ -1,5 +1,7 @@
 package protocol
 
+import "errors"
+
 type ErrorCode string
 
 const (
