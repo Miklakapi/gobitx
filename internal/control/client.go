@@ -72,38 +72,12 @@ func (c Client) Run() error {
 func handshake(codec *protocol.Codec) error {
 	slog.Debug("handshake started")
 
-	frame, err := protocol.NewFrame(protocol.CommandPing, nil)
+	_, err := requestFrame(codec, protocol.CommandPing, nil, protocol.CommandPong)
 	if err != nil {
 		return err
 	}
 
-	err = codec.WriteFrame(frame)
-	if err != nil {
-		return err
-	}
-
-	responseFrame, err := codec.ReadFrame()
-	if err != nil {
-		return err
-	}
-
-	switch responseFrame.Command {
-	case protocol.CommandPong:
-		return nil
-
-	case protocol.CommandError:
-		var errorPayload protocol.ErrorPayload
-
-		err := json.Unmarshal(responseFrame.Payload, &errorPayload)
-		if err != nil {
-			return fmt.Errorf("failed to decode error response: %w", err)
-		}
-
-		return fmt.Errorf("server error: %s", errorPayload.Message)
-
-	default:
-		return fmt.Errorf("invalid handshake response: %d", responseFrame.Command)
-	}
+	return nil
 }
 
 func latencyTest(codec *protocol.Codec) (protocol.LatencyResult, error) {
@@ -111,49 +85,26 @@ func latencyTest(codec *protocol.Codec) (protocol.LatencyResult, error) {
 
 	const Iterations = 20
 
-	frame, err := protocol.NewFrame(protocol.CommandPing, nil)
-	if err != nil {
-		return protocol.LatencyResult{}, err
-	}
-
 	measurements := make([]time.Duration, 0, Iterations)
 
 	for range Iterations {
 		start := time.Now()
 
-		err = codec.WriteFrame(frame)
-		if err != nil {
-			return protocol.LatencyResult{}, err
-		}
-
-		responseFrame, err := codec.ReadFrame()
+		_, err := requestFrame(codec, protocol.CommandPing, nil, protocol.CommandPong)
 		if err != nil {
 			return protocol.LatencyResult{}, err
 		}
 
 		latency := time.Since(start)
 
-		if responseFrame.Command == protocol.CommandError {
-			var errorPayload protocol.ErrorPayload
-
-			err := json.Unmarshal(responseFrame.Payload, &errorPayload)
-			if err != nil {
-				return protocol.LatencyResult{}, fmt.Errorf("failed to decode error response: %w", err)
-			}
-
-			return protocol.LatencyResult{}, fmt.Errorf("server error: %s", errorPayload.Message)
-		} else if responseFrame.Command != protocol.CommandPong {
-			return protocol.LatencyResult{}, fmt.Errorf("invalid response from server: %q", responseFrame.Command)
-		}
-
 		measurements = append(measurements, latency)
 	}
 
 	result := calculateLatencyResult(measurements)
 
-	err = sendResult(codec, protocol.ResultLatency, result)
+	err := sendResult(codec, protocol.ResultLatency, result)
 	if err != nil {
-		return result, err
+		return protocol.LatencyResult{}, err
 	}
 
 	return result, nil
@@ -187,48 +138,5 @@ func calculateLatencyResult(measurements []time.Duration) protocol.LatencyResult
 		MinNS:   minLatency,
 		AvgNS:   avgLatency,
 		MaxNS:   maxLatency,
-	}
-}
-
-func sendResult(codec *protocol.Codec, resultType protocol.ResultType, result any) error {
-	resultData, err := json.Marshal(result)
-	if err != nil {
-		return err
-	}
-
-	frame, err := protocol.NewFrame(protocol.CommandResult, protocol.ResultPayload{
-		Type: resultType,
-		Data: resultData,
-	})
-	if err != nil {
-		return err
-	}
-
-	err = codec.WriteFrame(frame)
-	if err != nil {
-		return err
-	}
-
-	responseFrame, err := codec.ReadFrame()
-	if err != nil {
-		return err
-	}
-
-	switch responseFrame.Command {
-	case protocol.CommandOK:
-		return nil
-
-	case protocol.CommandError:
-		var errorPayload protocol.ErrorPayload
-
-		err := json.Unmarshal(responseFrame.Payload, &errorPayload)
-		if err != nil {
-			return fmt.Errorf("failed to decode error response: %w", err)
-		}
-
-		return fmt.Errorf("server error: %s", errorPayload.Message)
-
-	default:
-		return fmt.Errorf("invalid result response: %d", responseFrame.Command)
 	}
 }
