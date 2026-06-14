@@ -51,14 +51,7 @@ func (c Client) Run() error {
 		return err
 	}
 
-	fmt.Printf(
-		"Latency: samples=%d min=%s avg=%s max=%s\n",
-		latencyResult.Samples,
-		latencyResult.MinNS,
-		latencyResult.AvgNS,
-		latencyResult.MaxNS,
-	)
-
+	showLatencyResult(latencyResult)
 	// TODO: Download test
 	// TODO: Show results
 
