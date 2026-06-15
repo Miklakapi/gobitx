@@ -46,26 +46,34 @@ func (c Client) Run() error {
 
 	codec := protocol.NewCodec(conn)
 
-	if err := handshake(codec); err != nil {
+	if err := c.handshake(codec); err != nil {
 		return c.friendlyClientError(err)
 	}
 
-	latencyResult, err := latencyTest(codec)
+	latencyResult, err := c.latencyTest(codec)
 	if err != nil {
 		return c.friendlyClientError(err)
 	}
 
 	showLatencyResult(latencyResult)
-	// TODO: Download test
-	// TODO: Show results
 
-	// TODO: Upload test
-	// TODO: Show results
+	downloadResult, err := c.downloadTest(codec)
+	if err != nil {
+		return c.friendlyClientError(err)
+	}
+
+	showTransferResult(protocol.ResultDownload, downloadResult)
+
+	uploadResult, err := c.uploadTest(codec)
+	if err != nil {
+		return c.friendlyClientError(err)
+	}
+	showTransferResult(protocol.ResultUpload, uploadResult)
 
 	return nil
 }
 
-func handshake(codec *protocol.Codec) error {
+func (c Client) handshake(codec *protocol.Codec) error {
 	slog.Debug("handshake started")
 
 	_, err := requestFrame(codec, protocol.CommandPing, nil, protocol.CommandPong)
@@ -77,7 +85,7 @@ func handshake(codec *protocol.Codec) error {
 	return nil
 }
 
-func latencyTest(codec *protocol.Codec) (protocol.LatencyResult, error) {
+func (c Client) latencyTest(codec *protocol.Codec) (protocol.LatencyResult, error) {
 	slog.Debug("latency test started")
 
 	const Iterations = 20
@@ -106,6 +114,56 @@ func latencyTest(codec *protocol.Codec) (protocol.LatencyResult, error) {
 
 	slog.Debug("latency test completed")
 	return result, nil
+}
+
+func (c Client) downloadTest(codec *protocol.Codec) (protocol.TransferResult, error) {
+	slog.Debug("download test started")
+
+	_, err := requestFrame(codec, protocol.CommandDownload, protocol.TransferRequest{DurationNS: c.cfg.Duration}, protocol.CommandReady)
+	if err != nil {
+		return protocol.TransferResult{}, err
+	}
+
+	slog.Debug("download test completed")
+
+	return protocol.TransferResult{}, nil
+}
+
+func (c Client) uploadTest(codec *protocol.Codec) (protocol.TransferResult, error) {
+	slog.Debug("upload test started")
+
+	_, err := requestFrame(codec, protocol.CommandUpload, protocol.TransferRequest{DurationNS: c.cfg.Duration}, protocol.CommandReady)
+	if err != nil {
+		return protocol.TransferResult{}, err
+	}
+
+	slog.Debug("upload test completed")
+
+	return protocol.TransferResult{}, nil
+}
+
+func (c Client) friendlyClientError(err error) error {
+	if err == nil {
+		return nil
+	}
+
+	if c.ctx.Err() != nil {
+		return nil
+	}
+
+	if errors.Is(err, io.EOF) {
+		return fmt.Errorf("server closed connection")
+	}
+
+	if errors.Is(err, net.ErrClosed) {
+		return fmt.Errorf("connection closed")
+	}
+
+	if errors.Is(err, os.ErrDeadlineExceeded) {
+		return fmt.Errorf("connection timed out")
+	}
+
+	return err
 }
 
 func calculateLatencyResult(measurements []time.Duration) protocol.LatencyResult {
@@ -137,28 +195,4 @@ func calculateLatencyResult(measurements []time.Duration) protocol.LatencyResult
 		AvgNS:   avgLatency,
 		MaxNS:   maxLatency,
 	}
-}
-
-func (c Client) friendlyClientError(err error) error {
-	if err == nil {
-		return nil
-	}
-
-	if c.ctx.Err() != nil {
-		return nil
-	}
-
-	if errors.Is(err, io.EOF) {
-		return fmt.Errorf("server closed connection")
-	}
-
-	if errors.Is(err, net.ErrClosed) {
-		return fmt.Errorf("connection closed")
-	}
-
-	if errors.Is(err, os.ErrDeadlineExceeded) {
-		return fmt.Errorf("connection timed out")
-	}
-
-	return err
 }

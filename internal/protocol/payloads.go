@@ -1,6 +1,9 @@
 package protocol
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"time"
+)
 
 type ErrorPayload struct {
 	Code    ErrorCode `json:"code"`
@@ -11,12 +14,8 @@ type ReadyPayload struct {
 	Port int `json:"port"`
 }
 
-type DownloadRequest struct {
-	DurationNS int64 `json:"duration_ns"`
-}
-
-type UploadRequest struct {
-	DurationNS int64 `json:"duration_ns"`
+type TransferRequest struct {
+	DurationNS time.Duration `json:"duration_ns"`
 }
 
 type QualityRequest struct {

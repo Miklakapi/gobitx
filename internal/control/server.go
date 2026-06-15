@@ -118,8 +118,10 @@ func handleCommand(codec *protocol.Codec, frame protocol.Frame) {
 		writeProtocol(codec, protocol.CommandPong, nil)
 		return
 	case protocol.CommandDownload:
+		writeProtocol(codec, protocol.CommandReady, protocol.ReadyPayload{Port: 1})
 		return
 	case protocol.CommandUpload:
+		writeProtocol(codec, protocol.CommandReady, protocol.ReadyPayload{Port: 1})
 		return
 	case protocol.CommandQuality:
 		return
