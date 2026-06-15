@@ -2,9 +2,12 @@ package control
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net"
+	"os"
 	"time"
 
 	"github.com/Miklakapi/gobitx/internal/config"
@@ -43,12 +46,12 @@ func (c Client) Run() error {
 	codec := protocol.NewCodec(conn)
 
 	if err := handshake(codec); err != nil {
-		return err
+		return c.friendlyClientError(err)
 	}
 
 	latencyResult, err := latencyTest(codec)
 	if err != nil {
-		return err
+		return c.friendlyClientError(err)
 	}
 
 	showLatencyResult(latencyResult)
@@ -131,4 +134,28 @@ func calculateLatencyResult(measurements []time.Duration) protocol.LatencyResult
 		AvgNS:   avgLatency,
 		MaxNS:   maxLatency,
 	}
+}
+
+func (c Client) friendlyClientError(err error) error {
+	if err == nil {
+		return nil
+	}
+
+	if c.ctx.Err() != nil {
+		return nil
+	}
+
+	if errors.Is(err, io.EOF) {
+		return fmt.Errorf("server closed connection")
+	}
+
+	if errors.Is(err, net.ErrClosed) {
+		return fmt.Errorf("connection closed")
+	}
+
+	if errors.Is(err, os.ErrDeadlineExceeded) {
+		return fmt.Errorf("connection timed out")
+	}
+
+	return err
 }
