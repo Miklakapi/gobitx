@@ -128,6 +128,7 @@ func handleCommand(codec *protocol.Codec, frame protocol.Frame) bool {
 		return false
 	case protocol.CommandResult:
 		if err := handleCommandResult(frame); err != nil {
+			writeResultError(codec, err)
 			return false
 		}
 		writeProtocol(codec, protocol.CommandOK, nil)
@@ -185,4 +186,10 @@ func handleCommandResult(frame protocol.Frame) error {
 	default:
 		return fmt.Errorf("unknown result type")
 	}
+}
+
+func writeResultError(codec *protocol.Codec, err error) {
+	slog.Warn("invalid result received", "err", err)
+
+	writeProtocolError(codec, protocol.ErrorInvalidResult, "invalid result")
 }
