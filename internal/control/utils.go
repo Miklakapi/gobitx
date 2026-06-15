@@ -47,13 +47,7 @@ func sendResult(codec *protocol.Codec, resultType protocol.ResultType, result an
 }
 
 func requestFrame(codec *protocol.Codec, command protocol.Command, payload any, expected protocol.Command) (protocol.Frame, error) {
-	frame, err := protocol.NewFrame(command, payload)
-	if err != nil {
-		return protocol.Frame{}, err
-	}
-
-	err = codec.WriteFrame(frame)
-	if err != nil {
+	if err := writeProtocolFrame(codec, command, payload); err != nil {
 		return protocol.Frame{}, err
 	}
 
@@ -63,6 +57,15 @@ func requestFrame(codec *protocol.Codec, command protocol.Command, payload any, 
 	}
 
 	return responseFrame, nil
+}
+
+func writeProtocolFrame(codec *protocol.Codec, command protocol.Command, payload any) error {
+	frame, err := protocol.NewFrame(command, payload)
+	if err != nil {
+		return err
+	}
+
+	return codec.WriteFrame(frame)
 }
 
 func readExpectedFrame(codec *protocol.Codec, expected protocol.Command) (protocol.Frame, error) {

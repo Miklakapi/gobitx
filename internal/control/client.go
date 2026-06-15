@@ -2,6 +2,7 @@ package control
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/Miklakapi/gobitx/internal/config"
 	"github.com/Miklakapi/gobitx/internal/protocol"
+	"github.com/Miklakapi/gobitx/internal/tcpdata"
 )
 
 type Client struct {
@@ -36,7 +38,9 @@ func (c Client) Run() error {
 	if err != nil {
 		return err
 	}
+
 	defer conn.Close()
+
 	slog.Debug("connection established")
 
 	go func() {
@@ -119,27 +123,105 @@ func (c Client) latencyTest(codec *protocol.Codec) (protocol.LatencyResult, erro
 func (c Client) downloadTest(codec *protocol.Codec) (protocol.TransferResult, error) {
 	slog.Debug("download test started")
 
-	_, err := requestFrame(codec, protocol.CommandDownload, protocol.TransferRequest{DurationNS: c.cfg.Duration}, protocol.CommandReady)
+	frame, err := requestFrame(
+		codec,
+		protocol.CommandDownload,
+		protocol.TransferRequest{DurationNS: c.cfg.Duration},
+		protocol.CommandReady,
+	)
 	if err != nil {
+		return protocol.TransferResult{}, err
+	}
+
+	var payload protocol.ReadyPayload
+	if err := json.Unmarshal(frame.Payload, &payload); err != nil {
+		return protocol.TransferResult{}, err
+	}
+
+	var d net.Dialer
+
+	timeoutCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	conn, err := d.DialContext(timeoutCtx, "tcp", fmt.Sprint(c.cfg.Destination, ":", payload.Port))
+	if err != nil {
+		return protocol.TransferResult{}, err
+	}
+	defer conn.Close()
+
+	result, err := tcpdata.ReceiveData(conn, c.cfg.Duration)
+	if err != nil {
+		return protocol.TransferResult{}, err
+	}
+
+	if err := sendResult(codec, protocol.ResultDownload, result); err != nil {
 		return protocol.TransferResult{}, err
 	}
 
 	slog.Debug("download test completed")
 
-	return protocol.TransferResult{}, nil
+	return result, nil
 }
 
 func (c Client) uploadTest(codec *protocol.Codec) (protocol.TransferResult, error) {
 	slog.Debug("upload test started")
 
-	_, err := requestFrame(codec, protocol.CommandUpload, protocol.TransferRequest{DurationNS: c.cfg.Duration}, protocol.CommandReady)
+	frame, err := requestFrame(
+		codec,
+		protocol.CommandUpload,
+		protocol.TransferRequest{DurationNS: c.cfg.Duration},
+		protocol.CommandReady,
+	)
 	if err != nil {
+		return protocol.TransferResult{}, err
+	}
+
+	var payload protocol.ReadyPayload
+	if err := json.Unmarshal(frame.Payload, &payload); err != nil {
+		return protocol.TransferResult{}, err
+	}
+
+	var d net.Dialer
+
+	timeoutCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	conn, err := d.DialContext(timeoutCtx, "tcp", fmt.Sprint(c.cfg.Destination, ":", payload.Port))
+	if err != nil {
+		return protocol.TransferResult{}, err
+	}
+	defer conn.Close()
+
+	if err := tcpdata.SendData(conn, c.cfg.Duration); err != nil {
+		return protocol.TransferResult{}, err
+	}
+
+	responseFrame, err := readExpectedFrame(codec, protocol.CommandResult)
+	if err != nil {
+		return protocol.TransferResult{}, err
+	}
+
+	var resultPayload protocol.ResultPayload
+	if err := json.Unmarshal(responseFrame.Payload, &resultPayload); err != nil {
+		return protocol.TransferResult{}, err
+	}
+
+	if resultPayload.Type != protocol.ResultUpload {
+		return protocol.TransferResult{}, fmt.Errorf("unexpected result type: got %s, expected %s", resultPayload.Type, protocol.ResultUpload)
+	}
+
+	var result protocol.TransferResult
+	if err := json.Unmarshal(resultPayload.Data, &result); err != nil {
+		return protocol.TransferResult{}, err
+	}
+
+	if err := writeProtocolFrame(codec, protocol.CommandOK, nil); err != nil {
 		return protocol.TransferResult{}, err
 	}
 
 	slog.Debug("upload test completed")
 
-	return protocol.TransferResult{}, nil
+	return result, nil
 }
 
 func (c Client) friendlyClientError(err error) error {

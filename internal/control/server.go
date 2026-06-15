@@ -8,9 +8,11 @@ import (
 	"log/slog"
 	"net"
 	"sync"
+	"time"
 
 	"github.com/Miklakapi/gobitx/internal/config"
 	"github.com/Miklakapi/gobitx/internal/protocol"
+	"github.com/Miklakapi/gobitx/internal/tcpdata"
 )
 
 type Server struct {
@@ -118,10 +120,10 @@ func handleCommand(codec *protocol.Codec, frame protocol.Frame) {
 		writeProtocol(codec, protocol.CommandPong, nil)
 		return
 	case protocol.CommandDownload:
-		writeProtocol(codec, protocol.CommandReady, protocol.ReadyPayload{Port: 1})
+		handleDownloadCommand(codec, frame)
 		return
 	case protocol.CommandUpload:
-		writeProtocol(codec, protocol.CommandReady, protocol.ReadyPayload{Port: 1})
+		handleUploadCommand(codec, frame)
 		return
 	case protocol.CommandQuality:
 		return
@@ -134,6 +136,80 @@ func handleCommand(codec *protocol.Codec, frame protocol.Frame) {
 		return
 	default:
 		writeProtocolError(codec, protocol.ErrorInvalidCommand, "unknown command")
+	}
+}
+
+func handleDownloadCommand(codec *protocol.Codec, frame protocol.Frame) {
+	var payload protocol.TransferRequest
+
+	if err := json.Unmarshal(frame.Payload, &payload); err != nil {
+		slog.Warn("invalid download payload", "err", err)
+		writeProtocolError(codec, protocol.ErrorInvalidPayload, "invalid download payload")
+		return
+	}
+
+	listener, port, err := tcpdata.Listen()
+	if err != nil {
+		slog.Warn("failed to open download data port", "err", err)
+		writeProtocolError(codec, protocol.ErrorDataPortUnavailable, "download data port unavailable")
+		return
+	}
+	defer listener.Close()
+
+	writeProtocol(codec, protocol.CommandReady, protocol.ReadyPayload{Port: port})
+
+	conn, err := listener.Accept()
+	if err != nil {
+		slog.Warn("failed to accept download data connection", "err", err)
+		writeProtocolError(codec, protocol.ErrorDataConnectionFailed, "download data connection failed")
+		return
+	}
+	defer conn.Close()
+
+	if err := tcpdata.SendData(conn, payload.DurationNS+2*time.Second); err != nil {
+		slog.Warn("download data transfer failed", "err", err)
+		writeProtocolError(codec, protocol.ErrorDataTransferFailed, "download data transfer failed")
+		return
+	}
+}
+
+func handleUploadCommand(codec *protocol.Codec, frame protocol.Frame) {
+	var payload protocol.TransferRequest
+
+	if err := json.Unmarshal(frame.Payload, &payload); err != nil {
+		slog.Warn("invalid upload payload", "err", err)
+		writeProtocolError(codec, protocol.ErrorInvalidPayload, "invalid upload payload")
+		return
+	}
+
+	listener, port, err := tcpdata.Listen()
+	if err != nil {
+		slog.Warn("failed to open upload data port", "err", err)
+		writeProtocolError(codec, protocol.ErrorDataPortUnavailable, "upload data port unavailable")
+		return
+	}
+	defer listener.Close()
+
+	writeProtocol(codec, protocol.CommandReady, protocol.ReadyPayload{Port: port})
+
+	conn, err := listener.Accept()
+	if err != nil {
+		slog.Warn("failed to accept upload data connection", "err", err)
+		writeProtocolError(codec, protocol.ErrorDataConnectionFailed, "upload data connection failed")
+		return
+	}
+	defer conn.Close()
+
+	result, err := tcpdata.ReceiveData(conn, payload.DurationNS+2*time.Second)
+	if err != nil {
+		slog.Warn("upload data transfer failed", "err", err)
+		writeProtocolError(codec, protocol.ErrorDataTransferFailed, "upload data transfer failed")
+		return
+	}
+
+	if err := sendResult(codec, protocol.ResultUpload, result); err != nil {
+		slog.Warn("failed to send upload result", "err", err)
+		return
 	}
 }
 
