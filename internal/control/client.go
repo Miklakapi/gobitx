@@ -37,6 +37,7 @@ func (c Client) Run() error {
 		return err
 	}
 	defer conn.Close()
+	slog.Debug("connection established")
 
 	go func() {
 		<-c.ctx.Done()
@@ -72,6 +73,7 @@ func handshake(codec *protocol.Codec) error {
 		return err
 	}
 
+	slog.Debug("handshake completed")
 	return nil
 }
 
@@ -102,6 +104,7 @@ func latencyTest(codec *protocol.Codec) (protocol.LatencyResult, error) {
 		return protocol.LatencyResult{}, err
 	}
 
+	slog.Debug("latency test completed")
 	return result, nil
 }
 

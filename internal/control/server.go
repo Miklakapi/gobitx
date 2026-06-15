@@ -40,7 +40,7 @@ func (s *Server) Run() {
 			if errors.Is(err, net.ErrClosed) {
 				return
 			}
-			slog.Error("accept error: ", "err", err)
+			slog.Error("accept error", "err", err)
 			continue
 		}
 

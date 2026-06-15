@@ -38,13 +38,13 @@ func main() {
 
 		fmt.Println("Application started on port:", cfg.Port)
 		server.Run()
-		fmt.Println("Application stopped")
 
 		return
 	}
 
 	client := control.NewClient(ctx, cfg)
 
+	fmt.Println("Application started on port:", cfg.Port)
 	err = client.Run()
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
