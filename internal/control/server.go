@@ -160,8 +160,7 @@ func handleCommandResult(frame protocol.Frame) error {
 
 		return nil
 
-	case protocol.ResultUpload:
-	case protocol.ResultDownload:
+	case protocol.ResultUpload, protocol.ResultDownload:
 		var data protocol.TransferResult
 
 		if err := json.Unmarshal(result.Data, &data); err != nil {
@@ -186,6 +185,4 @@ func handleCommandResult(frame protocol.Frame) error {
 	default:
 		return fmt.Errorf("unknown result type")
 	}
-
-	return nil
 }
