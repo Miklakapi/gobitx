@@ -17,8 +17,6 @@ const (
 
 	CommandReady
 	CommandResult
-
-	CommandQuit
 )
 
 func (c Command) String() string {
@@ -41,8 +39,6 @@ func (c Command) String() string {
 		return "READY"
 	case CommandResult:
 		return "RESULT"
-	case CommandQuit:
-		return "QUIT"
 	default:
 		return "UNKNOWN"
 	}
@@ -63,8 +59,7 @@ func (c Command) IsRequest() bool {
 		CommandDownload,
 		CommandUpload,
 		CommandQuality,
-		CommandResult,
-		CommandQuit:
+		CommandResult:
 		return true
 	default:
 		return false

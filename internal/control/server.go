@@ -108,38 +108,31 @@ func (s *Server) handleConnection(conn net.Conn) {
 			return
 		}
 
-		shouldClose := handleCommand(codec, frame)
-		if shouldClose {
-			return
-		}
+		handleCommand(codec, frame)
 	}
 }
 
-func handleCommand(codec *protocol.Codec, frame protocol.Frame) bool {
+func handleCommand(codec *protocol.Codec, frame protocol.Frame) {
 	switch frame.Command {
 	case protocol.CommandPing:
 		writeProtocol(codec, protocol.CommandPong, nil)
-		return false
+		return
 	case protocol.CommandDownload:
-		return false
+		return
 	case protocol.CommandUpload:
-		return false
+		return
 	case protocol.CommandQuality:
-		return false
+		return
 	case protocol.CommandResult:
 		if err := handleCommandResult(frame); err != nil {
 			writeResultError(codec, err)
-			return false
+			return
 		}
 		writeProtocol(codec, protocol.CommandOK, nil)
-		return false
-	case protocol.CommandQuit:
-		writeProtocol(codec, protocol.CommandOK, nil)
-		return true
+		return
 	default:
 		writeProtocolError(codec, protocol.ErrorInvalidCommand, "unknown command")
 	}
-	return false
 }
 
 func handleCommandResult(frame protocol.Frame) error {
