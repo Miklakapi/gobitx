@@ -207,6 +207,8 @@ func handleUploadCommand(codec *protocol.Codec, frame protocol.Frame) {
 		return
 	}
 
+	showTransferResult(protocol.ResultUpload, result)
+
 	if err := sendResult(codec, protocol.ResultUpload, result); err != nil {
 		slog.Warn("failed to send upload result", "err", err)
 		return

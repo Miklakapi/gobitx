@@ -104,9 +104,9 @@ func showLatencyResult(data protocol.LatencyResult) {
 	fmt.Printf(
 		"Latency: samples=%d min=%s avg=%s max=%s\n",
 		data.Samples,
-		data.Min,
-		data.Avg,
-		data.Max,
+		formatDurationSeconds(data.Min),
+		formatDurationSeconds(data.Avg),
+		formatDurationSeconds(data.Max),
 	)
 }
 
@@ -122,9 +122,9 @@ func showTransferResult(transferType protocol.ResultType, data protocol.Transfer
 		transferTypeLabel,
 		data.Bytes,
 		formatDurationSeconds(data.Duration),
-		data.AvgRate,
-		data.MinRate,
-		data.MaxRate,
+		data.AvgRate.BitString(),
+		data.MinRate.BitString(),
+		data.MaxRate.BitString(),
 		data.Stability,
 	)
 }
