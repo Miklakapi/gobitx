@@ -57,8 +57,11 @@ func ReceiveData(conn net.Conn, duration time.Duration) (protocol.TransferResult
 	buffer := make([]byte, 64*1024)
 
 	var totalBytes int64
+	var sampleBytes int64
+	var samples []byteflow.Rate
 
 	start := time.Now()
+	sampleStart := start
 	deadline := start.Add(duration)
 
 	if err := conn.SetReadDeadline(deadline); err != nil {
@@ -67,9 +70,23 @@ func ReceiveData(conn net.Conn, duration time.Duration) (protocol.TransferResult
 
 	for {
 		n, err := conn.Read(buffer)
+		now := time.Now()
 
 		if n > 0 {
-			totalBytes += int64(n)
+			readBytes := int64(n)
+
+			totalBytes += readBytes
+			sampleBytes += readBytes
+		}
+
+		sampleDuration := now.Sub(sampleStart)
+		if sampleDuration >= time.Second {
+			if sampleBytes > 0 {
+				samples = append(samples, byteflow.PerSecond(byteflow.Bytes(sampleBytes), sampleDuration))
+			}
+
+			sampleBytes = 0
+			sampleStart = now
 		}
 
 		if err != nil {
@@ -91,10 +108,17 @@ func ReceiveData(conn net.Conn, duration time.Duration) (protocol.TransferResult
 
 	elapsed := time.Since(start)
 
-	return calculateTransferResult(totalBytes, elapsed), nil
+	if sampleBytes > 0 {
+		sampleDuration := time.Since(sampleStart)
+		if sampleDuration > 0 {
+			samples = append(samples, byteflow.PerSecond(byteflow.Bytes(sampleBytes), sampleDuration))
+		}
+	}
+
+	return calculateTransferResult(totalBytes, elapsed, samples), nil
 }
 
-func calculateTransferResult(bytes int64, duration time.Duration) protocol.TransferResult {
+func calculateTransferResult(bytes int64, duration time.Duration, samples []byteflow.Rate) protocol.TransferResult {
 	size := byteflow.Bytes(bytes)
 
 	if duration <= 0 {
@@ -105,15 +129,46 @@ func calculateTransferResult(bytes int64, duration time.Duration) protocol.Trans
 	}
 
 	avgRate := byteflow.PerSecond(size, duration)
+	minRate, maxRate, stability := calculateRateStats(avgRate, samples)
 
 	return protocol.TransferResult{
 		Bytes:     size,
 		Duration:  duration,
 		AvgRate:   avgRate,
-		MinRate:   0,
-		MaxRate:   0,
-		Stability: 0,
+		MinRate:   minRate,
+		MaxRate:   maxRate,
+		Stability: stability,
 	}
+}
+
+func calculateRateStats(avgRate byteflow.Rate, samples []byteflow.Rate) (byteflow.Rate, byteflow.Rate, float64) {
+	if len(samples) == 0 {
+		return avgRate, avgRate, 100
+	}
+
+	minRate := samples[0]
+	maxRate := samples[0]
+
+	for _, sample := range samples {
+		if sample < minRate {
+			minRate = sample
+		}
+
+		if sample > maxRate {
+			maxRate = sample
+		}
+	}
+
+	if avgRate <= 0 {
+		return minRate, maxRate, 0
+	}
+
+	stability := float64(minRate) / float64(avgRate) * 100
+	if stability > 100 {
+		stability = 100
+	}
+
+	return minRate, maxRate, stability
 }
 
 func isTimeoutError(err error) bool {
