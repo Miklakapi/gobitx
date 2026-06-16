@@ -147,6 +147,15 @@ func (c Client) downloadTest(codec *protocol.Codec) (protocol.TransferResult, er
 	if err != nil {
 		return protocol.TransferResult{}, err
 	}
+
+	dataCtx, cancelDataCtx := context.WithCancel(c.ctx)
+	defer cancelDataCtx()
+
+	go func() {
+		<-dataCtx.Done()
+		conn.Close()
+	}()
+
 	defer conn.Close()
 
 	slog.Debug("data receiving started")
@@ -196,6 +205,15 @@ func (c Client) uploadTest(codec *protocol.Codec) (protocol.TransferResult, erro
 	if err != nil {
 		return protocol.TransferResult{}, err
 	}
+
+	dataCtx, cancelDataCtx := context.WithCancel(c.ctx)
+	defer cancelDataCtx()
+
+	go func() {
+		<-dataCtx.Done()
+		conn.Close()
+	}()
+
 	defer conn.Close()
 
 	slog.Debug("data sending started")
