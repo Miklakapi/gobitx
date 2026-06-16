@@ -135,11 +135,14 @@ func handleCommand(codec *protocol.Codec, frame protocol.Frame) {
 		writeProtocol(codec, protocol.CommandOK, nil)
 		return
 	default:
+		slog.Debug("unknown command", "command", frame.Command)
 		writeProtocolError(codec, protocol.ErrorInvalidCommand, "unknown command")
 	}
 }
 
 func handleDownloadCommand(codec *protocol.Codec, frame protocol.Frame) {
+	slog.Debug("download test started")
+
 	var payload protocol.TransferRequest
 
 	if err := json.Unmarshal(frame.Payload, &payload); err != nil {
@@ -171,9 +174,13 @@ func handleDownloadCommand(codec *protocol.Codec, frame protocol.Frame) {
 		writeProtocolError(codec, protocol.ErrorDataTransferFailed, "download data transfer failed")
 		return
 	}
+
+	slog.Debug("download test completed")
 }
 
 func handleUploadCommand(codec *protocol.Codec, frame protocol.Frame) {
+	slog.Debug("upload test started")
+
 	var payload protocol.TransferRequest
 
 	if err := json.Unmarshal(frame.Payload, &payload); err != nil {
@@ -208,6 +215,8 @@ func handleUploadCommand(codec *protocol.Codec, frame protocol.Frame) {
 	}
 
 	showTransferResult(protocol.ResultUpload, result)
+
+	slog.Debug("upload test completed")
 
 	if err := sendResult(codec, protocol.ResultUpload, result); err != nil {
 		slog.Warn("failed to send upload result", "err", err)
