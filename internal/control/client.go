@@ -285,8 +285,8 @@ func calculateLatencyResult(measurements []time.Duration) protocol.LatencyResult
 
 	return protocol.LatencyResult{
 		Samples: len(measurements),
-		MinNS:   minLatency,
-		AvgNS:   avgLatency,
-		MaxNS:   maxLatency,
+		Min:     minLatency,
+		Avg:     avgLatency,
+		Max:     maxLatency,
 	}
 }

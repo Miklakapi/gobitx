@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Miklakapi/byteflow"
 	"github.com/Miklakapi/gobitx/internal/protocol"
 )
 
@@ -94,22 +95,24 @@ func ReceiveData(conn net.Conn, duration time.Duration) (protocol.TransferResult
 }
 
 func calculateTransferResult(bytes int64, duration time.Duration) protocol.TransferResult {
+	size := byteflow.Bytes(bytes)
+
 	if duration <= 0 {
 		return protocol.TransferResult{
-			Bytes:      bytes,
-			DurationNS: 0,
+			Bytes:    size,
+			Duration: 0,
 		}
 	}
 
-	avgMbps := float64(bytes*8) / duration.Seconds() / 1_000_000
+	avgRate := byteflow.PerSecond(size, duration)
 
 	return protocol.TransferResult{
-		Bytes:      bytes,
-		DurationNS: duration,
-		AvgMbps:    avgMbps,
-		MinMbps:    0,
-		MaxMbps:    0,
-		Stability:  0,
+		Bytes:     size,
+		Duration:  duration,
+		AvgRate:   avgRate,
+		MinRate:   0,
+		MaxRate:   0,
+		Stability: 0,
 	}
 }
 
