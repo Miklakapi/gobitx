@@ -28,11 +28,20 @@ func SendData(conn net.Conn, duration time.Duration) error {
 
 	deadline := time.Now().Add(duration)
 
+	if err := conn.SetWriteDeadline(deadline); err != nil {
+		return err
+	}
+
 	for time.Now().Before(deadline) {
 		_, err := conn.Write(buffer)
 		if err != nil {
 			if isClosedConnectionError(err) {
 				slog.Debug("data connection closed while sending")
+				return nil
+			}
+
+			if isTimeoutError(err) {
+				slog.Debug("data sending deadline reached")
 				return nil
 			}
 

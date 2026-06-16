@@ -149,8 +149,14 @@ func (c Client) downloadTest(codec *protocol.Codec) (protocol.TransferResult, er
 	}
 	defer conn.Close()
 
+	slog.Debug("data receiving started")
 	result, err := tcpdata.ReceiveData(conn, c.cfg.Duration)
 	if err != nil {
+		return protocol.TransferResult{}, err
+	}
+	slog.Debug("data receiving completed")
+
+	if err := conn.Close(); err != nil {
 		return protocol.TransferResult{}, err
 	}
 
@@ -192,7 +198,13 @@ func (c Client) uploadTest(codec *protocol.Codec) (protocol.TransferResult, erro
 	}
 	defer conn.Close()
 
+	slog.Debug("data sending started")
 	if err := tcpdata.SendData(conn, c.cfg.Duration); err != nil {
+		return protocol.TransferResult{}, err
+	}
+	slog.Debug("data sending completed")
+
+	if err := conn.Close(); err != nil {
 		return protocol.TransferResult{}, err
 	}
 
