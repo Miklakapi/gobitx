@@ -104,9 +104,9 @@ func showLatencyResult(data protocol.LatencyResult) {
 	fmt.Printf(
 		"Latency: samples=%d min=%s avg=%s max=%s\n",
 		data.Samples,
-		formatDurationSeconds(data.Min),
-		formatDurationSeconds(data.Avg),
-		formatDurationSeconds(data.Max),
+		formatDuration(data.Min),
+		formatDuration(data.Avg),
+		formatDuration(data.Max),
 	)
 }
 
@@ -118,10 +118,10 @@ func showTransferResult(transferType protocol.ResultType, data protocol.Transfer
 	}
 
 	fmt.Printf(
-		"%s: bytes=%s duration=%s min=%s avg=%s max=%s stability=%f\n",
+		"%s: bytes=%s duration=%s min=%s avg=%s max=%s stability=%.2f%%\n",
 		transferTypeLabel,
 		data.Bytes,
-		formatDurationSeconds(data.Duration),
+		formatDuration(data.Duration),
 		data.AvgRate.BitString(),
 		data.MinRate.BitString(),
 		data.MaxRate.BitString(),
@@ -144,6 +144,24 @@ func showQualityResult(data protocol.QualityResult) {
 	)
 }
 
-func formatDurationSeconds(d time.Duration) string {
-	return fmt.Sprintf("%.2fs", d.Seconds())
+func formatDuration(d time.Duration) string {
+	switch {
+	case d < time.Microsecond:
+		return fmt.Sprintf("%dns", d.Nanoseconds())
+
+	case d < time.Millisecond:
+		return fmt.Sprintf("%.2fµs", float64(d)/float64(time.Microsecond))
+
+	case d < time.Second:
+		return fmt.Sprintf("%.2fms", float64(d)/float64(time.Millisecond))
+
+	case d < time.Minute:
+		return fmt.Sprintf("%.2fs", d.Seconds())
+
+	case d < time.Hour:
+		return fmt.Sprintf("%.2fm", d.Minutes())
+
+	default:
+		return fmt.Sprintf("%.2fh", d.Hours())
+	}
 }
