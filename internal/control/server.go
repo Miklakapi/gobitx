@@ -207,7 +207,10 @@ func handleUploadCommand(codec *protocol.Codec, frame protocol.Frame) {
 	}
 	defer conn.Close()
 
-	result, err := tcpdata.ReceiveData(conn, payload.DurationNS+2*time.Second)
+	result, err := tcpdata.ReceiveData(conn, payload.DurationNS+2*time.Second, func(uploadResult protocol.TransferResult) {
+		showTransferResult(protocol.ResultUpload, uploadResult)
+	})
+
 	if err != nil {
 		slog.Warn("upload data transfer failed", "err", err)
 		writeProtocolError(codec, protocol.ErrorDataTransferFailed, "upload data transfer failed")
@@ -215,6 +218,7 @@ func handleUploadCommand(codec *protocol.Codec, frame protocol.Frame) {
 	}
 
 	showTransferResult(protocol.ResultUpload, result)
+	fmt.Println()
 
 	slog.Debug("upload test completed")
 
@@ -239,7 +243,9 @@ func handleCommandResult(frame protocol.Frame) error {
 			return err
 		}
 
+		fmt.Println()
 		showLatencyResult(data)
+		fmt.Println()
 
 		return nil
 
@@ -251,6 +257,7 @@ func handleCommandResult(frame protocol.Frame) error {
 		}
 
 		showTransferResult(result.Type, data)
+		fmt.Println()
 
 		return nil
 
@@ -262,6 +269,7 @@ func handleCommandResult(frame protocol.Frame) error {
 		}
 
 		showQualityResult(data)
+		fmt.Println()
 
 		return nil
 

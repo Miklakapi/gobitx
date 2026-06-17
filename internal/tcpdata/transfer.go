@@ -13,6 +13,8 @@ import (
 	"github.com/Miklakapi/gobitx/internal/protocol"
 )
 
+type ProgressHandler func(protocol.TransferResult)
+
 func Listen() (net.Listener, int, error) {
 	listener, err := net.Listen("tcp", ":0")
 	if err != nil {
@@ -53,7 +55,7 @@ func SendData(conn net.Conn, duration time.Duration) error {
 	return nil
 }
 
-func ReceiveData(conn net.Conn, duration time.Duration) (protocol.TransferResult, error) {
+func ReceiveData(conn net.Conn, duration time.Duration, progressHandler ProgressHandler) (protocol.TransferResult, error) {
 	buffer := make([]byte, 64*1024)
 
 	var totalBytes int64
@@ -82,7 +84,19 @@ func ReceiveData(conn net.Conn, duration time.Duration) (protocol.TransferResult
 		sampleDuration := now.Sub(sampleStart)
 		if sampleDuration >= time.Second {
 			if sampleBytes > 0 {
-				samples = append(samples, byteflow.PerSecond(byteflow.Bytes(sampleBytes), sampleDuration))
+				sampleRate := byteflow.PerSecond(byteflow.Bytes(sampleBytes), sampleDuration)
+				samples = append(samples, sampleRate)
+
+				if progressHandler != nil {
+					progressHandler(protocol.TransferResult{
+						Bytes:     byteflow.Bytes(sampleBytes),
+						Duration:  sampleDuration,
+						AvgRate:   sampleRate,
+						MinRate:   sampleRate,
+						MaxRate:   sampleRate,
+						Stability: 100,
+					})
+				}
 			}
 
 			sampleBytes = 0
@@ -111,7 +125,19 @@ func ReceiveData(conn net.Conn, duration time.Duration) (protocol.TransferResult
 	if sampleBytes > 0 {
 		sampleDuration := time.Since(sampleStart)
 		if sampleDuration > 0 {
-			samples = append(samples, byteflow.PerSecond(byteflow.Bytes(sampleBytes), sampleDuration))
+			sampleRate := byteflow.PerSecond(byteflow.Bytes(sampleBytes), sampleDuration)
+			samples = append(samples, sampleRate)
+
+			if progressHandler != nil && sampleDuration >= 600*time.Millisecond {
+				progressHandler(protocol.TransferResult{
+					Bytes:     byteflow.Bytes(sampleBytes),
+					Duration:  sampleDuration,
+					AvgRate:   sampleRate,
+					MinRate:   sampleRate,
+					MaxRate:   sampleRate,
+					Stability: 100,
+				})
+			}
 		}
 	}
 

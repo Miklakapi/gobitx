@@ -59,7 +59,9 @@ func (c Client) Run() error {
 		return c.friendlyClientError(err)
 	}
 
+	fmt.Println()
 	showLatencyResult(latencyResult)
+	fmt.Println()
 
 	downloadResult, err := c.downloadTest(codec)
 	if err != nil {
@@ -67,12 +69,14 @@ func (c Client) Run() error {
 	}
 
 	showTransferResult(protocol.ResultDownload, downloadResult)
+	fmt.Println()
 
 	uploadResult, err := c.uploadTest(codec)
 	if err != nil {
 		return c.friendlyClientError(err)
 	}
 	showTransferResult(protocol.ResultUpload, uploadResult)
+	fmt.Println()
 
 	return nil
 }
@@ -159,7 +163,9 @@ func (c Client) downloadTest(codec *protocol.Codec) (protocol.TransferResult, er
 	defer conn.Close()
 
 	slog.Debug("data receiving started")
-	result, err := tcpdata.ReceiveData(conn, c.cfg.Duration)
+	result, err := tcpdata.ReceiveData(conn, c.cfg.Duration, func(uploadResult protocol.TransferResult) {
+		showTransferResult(protocol.ResultDownload, uploadResult)
+	})
 	if err != nil {
 		return protocol.TransferResult{}, err
 	}
