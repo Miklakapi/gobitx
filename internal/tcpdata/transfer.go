@@ -63,6 +63,7 @@ func ReceiveData(conn net.Conn, duration time.Duration, progressHandler Progress
 	var samples []byteflow.Rate
 
 	start := time.Now()
+	lastReadAt := start
 	sampleStart := start
 	deadline := start.Add(duration)
 
@@ -79,6 +80,7 @@ func ReceiveData(conn net.Conn, duration time.Duration, progressHandler Progress
 
 			totalBytes += readBytes
 			sampleBytes += readBytes
+			lastReadAt = now
 		}
 
 		sampleDuration := now.Sub(sampleStart)
@@ -120,15 +122,13 @@ func ReceiveData(conn net.Conn, duration time.Duration, progressHandler Progress
 		}
 	}
 
-	elapsed := time.Since(start)
-
 	if sampleBytes > 0 {
-		sampleDuration := time.Since(sampleStart)
-		if sampleDuration > 0 {
+		sampleDuration := lastReadAt.Sub(sampleStart)
+		if sampleDuration >= 600*time.Millisecond {
 			sampleRate := byteflow.PerSecond(byteflow.Bytes(sampleBytes), sampleDuration)
 			samples = append(samples, sampleRate)
 
-			if progressHandler != nil && sampleDuration >= 600*time.Millisecond {
+			if progressHandler != nil {
 				progressHandler(protocol.TransferResult{
 					Bytes:     byteflow.Bytes(sampleBytes),
 					Duration:  sampleDuration,
@@ -139,6 +139,11 @@ func ReceiveData(conn net.Conn, duration time.Duration, progressHandler Progress
 				})
 			}
 		}
+	}
+
+	elapsed := lastReadAt.Sub(start)
+	if totalBytes == 0 {
+		elapsed = time.Since(start)
 	}
 
 	return calculateTransferResult(totalBytes, elapsed, samples), nil

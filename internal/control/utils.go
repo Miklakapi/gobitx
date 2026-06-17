@@ -47,6 +47,22 @@ func sendResult(codec *protocol.Codec, resultType protocol.ResultType, result an
 	return nil
 }
 
+func sendProgress(codec *protocol.Codec, resultType protocol.ResultType, result any) error {
+	resultData, err := json.Marshal(result)
+	if err != nil {
+		return err
+	}
+
+	if err := writeProtocolFrame(codec, protocol.CommandProgress, protocol.ResultPayload{
+		Type: resultType,
+		Data: resultData,
+	}); err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func requestFrame(codec *protocol.Codec, command protocol.Command, payload any, expected protocol.Command) (protocol.Frame, error) {
 	if err := writeProtocolFrame(codec, command, payload); err != nil {
 		return protocol.Frame{}, err
@@ -122,8 +138,8 @@ func showTransferResult(transferType protocol.ResultType, data protocol.Transfer
 		transferTypeLabel,
 		data.Bytes,
 		formatDuration(data.Duration),
-		data.AvgRate.BitString(),
 		data.MinRate.BitString(),
+		data.AvgRate.BitString(),
 		data.MaxRate.BitString(),
 		data.Stability,
 	)

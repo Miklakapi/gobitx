@@ -11,6 +11,7 @@ const (
 	CommandPing
 	CommandPong
 
+	CommandProgress
 	CommandDownload
 	CommandUpload
 	CommandQuality
