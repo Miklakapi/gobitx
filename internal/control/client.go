@@ -163,8 +163,13 @@ func (c Client) downloadTest(codec *protocol.Codec) (protocol.TransferResult, er
 	defer conn.Close()
 
 	slog.Debug("data receiving started")
-	result, err := tcpdata.ReceiveData(conn, c.cfg.Duration, func(uploadResult protocol.TransferResult) {
-		showTransferResult(protocol.ResultDownload, uploadResult)
+	result, err := tcpdata.ReceiveData(conn, c.cfg.Duration, func(downloadResult protocol.TransferResult) {
+		showTransferResult(protocol.ResultDownload, downloadResult)
+
+		if err := sendProgress(codec, protocol.ResultDownload, downloadResult); err != nil {
+			slog.Warn("failed to send download result", "err", err)
+			return
+		}
 	})
 	if err != nil {
 		return protocol.TransferResult{}, err
@@ -223,41 +228,86 @@ func (c Client) uploadTest(codec *protocol.Codec) (protocol.TransferResult, erro
 	defer conn.Close()
 
 	slog.Debug("data sending started")
-	if err := tcpdata.SendData(conn, c.cfg.Duration); err != nil {
-		return protocol.TransferResult{}, err
+
+	sendErrCh := make(chan error, 1)
+
+	go func() {
+		err := tcpdata.SendData(conn, c.cfg.Duration)
+		closeErr := conn.Close()
+
+		if err != nil {
+			sendErrCh <- err
+			return
+		}
+
+		if closeErr != nil {
+			sendErrCh <- closeErr
+			return
+		}
+
+		sendErrCh <- nil
+	}()
+
+	for {
+		responseFrame, err := codec.ReadFrame()
+		if err != nil {
+			return protocol.TransferResult{}, err
+		}
+
+		if err := decodeErrorFrame(responseFrame); err != nil {
+			return protocol.TransferResult{}, err
+		}
+
+		switch responseFrame.Command {
+		case protocol.CommandProgress:
+			var progressPayload protocol.ResultPayload
+			if err := json.Unmarshal(responseFrame.Payload, &progressPayload); err != nil {
+				return protocol.TransferResult{}, err
+			}
+
+			if progressPayload.Type != protocol.ResultUpload {
+				return protocol.TransferResult{}, fmt.Errorf("unexpected progress type: got %s, expected %s", progressPayload.Type, protocol.ResultUpload)
+			}
+
+			var progress protocol.TransferResult
+			if err := json.Unmarshal(progressPayload.Data, &progress); err != nil {
+				return protocol.TransferResult{}, err
+			}
+
+			showTransferResult(protocol.ResultUpload, progress)
+
+		case protocol.CommandResult:
+			var resultPayload protocol.ResultPayload
+			if err := json.Unmarshal(responseFrame.Payload, &resultPayload); err != nil {
+				return protocol.TransferResult{}, err
+			}
+
+			if resultPayload.Type != protocol.ResultUpload {
+				return protocol.TransferResult{}, fmt.Errorf("unexpected result type: got %s, expected %s", resultPayload.Type, protocol.ResultUpload)
+			}
+
+			var result protocol.TransferResult
+			if err := json.Unmarshal(resultPayload.Data, &result); err != nil {
+				return protocol.TransferResult{}, err
+			}
+
+			if err := writeProtocolFrame(codec, protocol.CommandOK, nil); err != nil {
+				return protocol.TransferResult{}, err
+			}
+
+			if err := <-sendErrCh; err != nil {
+				return protocol.TransferResult{}, err
+			}
+
+			slog.Debug("data sending completed")
+			slog.Debug("upload test completed")
+
+			return result, nil
+
+		default:
+			return protocol.TransferResult{}, fmt.Errorf("unexpected response: got %d, expected progress or result", responseFrame.Command)
+		}
 	}
-	slog.Debug("data sending completed")
-
-	if err := conn.Close(); err != nil {
-		return protocol.TransferResult{}, err
-	}
-
-	responseFrame, err := readExpectedFrame(codec, protocol.CommandResult)
-	if err != nil {
-		return protocol.TransferResult{}, err
-	}
-
-	var resultPayload protocol.ResultPayload
-	if err := json.Unmarshal(responseFrame.Payload, &resultPayload); err != nil {
-		return protocol.TransferResult{}, err
-	}
-
-	if resultPayload.Type != protocol.ResultUpload {
-		return protocol.TransferResult{}, fmt.Errorf("unexpected result type: got %s, expected %s", resultPayload.Type, protocol.ResultUpload)
-	}
-
-	var result protocol.TransferResult
-	if err := json.Unmarshal(resultPayload.Data, &result); err != nil {
-		return protocol.TransferResult{}, err
-	}
-
-	if err := writeProtocolFrame(codec, protocol.CommandOK, nil); err != nil {
-		return protocol.TransferResult{}, err
-	}
-
-	slog.Debug("upload test completed")
-
-	return result, nil
 }
 
 func (c Client) friendlyClientError(err error) error {

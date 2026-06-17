@@ -169,13 +169,84 @@ func handleDownloadCommand(codec *protocol.Codec, frame protocol.Frame) {
 	}
 	defer conn.Close()
 
-	if err := tcpdata.SendData(conn, payload.DurationNS+2*time.Second); err != nil {
-		slog.Warn("download data transfer failed", "err", err)
-		writeProtocolError(codec, protocol.ErrorDataTransferFailed, "download data transfer failed")
-		return
-	}
+	sendErrCh := make(chan error, 1)
 
-	slog.Debug("download test completed")
+	go func() {
+		err := tcpdata.SendData(conn, payload.DurationNS+2*time.Second)
+		closeErr := conn.Close()
+
+		if err != nil {
+			sendErrCh <- err
+			return
+		}
+
+		if closeErr != nil && !errors.Is(closeErr, net.ErrClosed) {
+			sendErrCh <- closeErr
+			return
+		}
+
+		sendErrCh <- nil
+	}()
+
+	for {
+		responseFrame, err := codec.ReadFrame()
+		if err != nil {
+			slog.Warn("failed to read download progress/result", "err", err)
+			return
+		}
+
+		if err := decodeErrorFrame(responseFrame); err != nil {
+			slog.Warn("download failed", "err", err)
+			return
+		}
+
+		switch responseFrame.Command {
+		case protocol.CommandProgress:
+			var progressPayload protocol.ResultPayload
+
+			if err := json.Unmarshal(responseFrame.Payload, &progressPayload); err != nil {
+				writeProtocolError(codec, protocol.ErrorInvalidPayload, "invalid download progress payload")
+				return
+			}
+
+			if progressPayload.Type != protocol.ResultDownload {
+				writeProtocolError(codec, protocol.ErrorInvalidResult, "invalid download progress type")
+				return
+			}
+
+			var progress protocol.TransferResult
+			if err := json.Unmarshal(progressPayload.Data, &progress); err != nil {
+				writeProtocolError(codec, protocol.ErrorInvalidPayload, "invalid download progress data")
+				return
+			}
+
+			showTransferResult(protocol.ResultDownload, progress)
+
+		case protocol.CommandResult:
+			if err := handleCommandResult(responseFrame); err != nil {
+				writeResultError(codec, err)
+				return
+			}
+
+			if err := writeProtocolFrame(codec, protocol.CommandOK, nil); err != nil {
+				slog.Warn("failed to write download OK", "err", err)
+				return
+			}
+
+			if err := <-sendErrCh; err != nil {
+				slog.Warn("download data transfer failed", "err", err)
+				writeProtocolError(codec, protocol.ErrorDataTransferFailed, "download data transfer failed")
+				return
+			}
+
+			slog.Debug("download test completed")
+			return
+
+		default:
+			writeProtocolError(codec, protocol.ErrorInvalidCommand, "unexpected command during download")
+			return
+		}
+	}
 }
 
 func handleUploadCommand(codec *protocol.Codec, frame protocol.Frame) {
@@ -209,6 +280,11 @@ func handleUploadCommand(codec *protocol.Codec, frame protocol.Frame) {
 
 	result, err := tcpdata.ReceiveData(conn, payload.DurationNS+2*time.Second, func(uploadResult protocol.TransferResult) {
 		showTransferResult(protocol.ResultUpload, uploadResult)
+
+		if err := sendProgress(codec, protocol.ResultUpload, uploadResult); err != nil {
+			slog.Warn("failed to send upload result", "err", err)
+			return
+		}
 	})
 
 	if err != nil {
