@@ -13,6 +13,7 @@ import (
 	"github.com/Miklakapi/gobitx/internal/config"
 	"github.com/Miklakapi/gobitx/internal/protocol"
 	"github.com/Miklakapi/gobitx/internal/tcpdata"
+	"github.com/Miklakapi/gobitx/internal/udpdata"
 )
 
 type Server struct {
@@ -126,6 +127,7 @@ func handleCommand(codec *protocol.Codec, frame protocol.Frame) {
 		handleUploadCommand(codec, frame)
 		return
 	case protocol.CommandQuality:
+		handleQualityCommand(codec, frame)
 		return
 	case protocol.CommandResult:
 		if err := handleCommandResult(frame); err != nil {
@@ -300,6 +302,52 @@ func handleUploadCommand(codec *protocol.Codec, frame protocol.Frame) {
 
 	if err := sendResult(codec, protocol.ResultUpload, result); err != nil {
 		slog.Warn("failed to send upload result", "err", err)
+		return
+	}
+}
+
+func handleQualityCommand(codec *protocol.Codec, frame protocol.Frame) {
+	slog.Debug("quality test started")
+
+	var payload protocol.TransferRequest
+
+	if err := json.Unmarshal(frame.Payload, &payload); err != nil {
+		slog.Warn("invalid quality payload", "err", err)
+		writeProtocolError(codec, protocol.ErrorInvalidPayload, "invalid quality payload")
+		return
+	}
+
+	conn, port, err := udpdata.Listen()
+	if err != nil {
+		slog.Warn("failed to open quality data port", "err", err)
+		writeProtocolError(codec, protocol.ErrorDataPortUnavailable, "quality data port unavailable")
+		return
+	}
+	defer conn.Close()
+
+	writeProtocol(codec, protocol.CommandReady, protocol.ReadyPayload{Port: port})
+
+	result, err := udpdata.ReceivePackets(conn, payload.DurationNS+2*time.Second, func(qualityResult protocol.QualityResult) {
+		showQualityResult(qualityResult)
+
+		if err := sendProgress(codec, protocol.ResultQuality, qualityResult); err != nil {
+			slog.Warn("failed to send quality progress", "err", err)
+			return
+		}
+	})
+	if err != nil {
+		slog.Warn("quality data transfer failed", "err", err)
+		writeProtocolError(codec, protocol.ErrorDataTransferFailed, "quality data transfer failed")
+		return
+	}
+
+	showQualityResult(result)
+	fmt.Println()
+
+	slog.Debug("quality test completed")
+
+	if err := sendResult(codec, protocol.ResultQuality, result); err != nil {
+		slog.Warn("failed to send quality result", "err", err)
 		return
 	}
 }

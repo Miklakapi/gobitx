@@ -15,6 +15,8 @@ import (
 const (
 	packetHeaderSize = 16
 	packetSize       = 1200
+	packetsPerSecond = 10000
+	minProgressLeft  = 600 * time.Millisecond
 )
 
 type ProgressHandler func(protocol.QualityResult)
@@ -65,7 +67,10 @@ func Dial(address string) (*net.UDPConn, error) {
 func SendPackets(conn *net.UDPConn, duration time.Duration) error {
 	buffer := make([]byte, packetSize)
 
-	deadline := time.Now().Add(duration)
+	start := time.Now()
+	deadline := start.Add(duration)
+	packetInterval := time.Second / time.Duration(packetsPerSecond)
+	nextSendAt := start
 
 	if err := conn.SetWriteDeadline(deadline); err != nil {
 		return err
@@ -74,10 +79,19 @@ func SendPackets(conn *net.UDPConn, duration time.Duration) error {
 	var sequence uint64
 
 	for time.Now().Before(deadline) {
-		now := time.Now().UnixNano()
+		now := time.Now()
+
+		if sleepDuration := nextSendAt.Sub(now); sleepDuration > 0 {
+			time.Sleep(sleepDuration)
+		}
+
+		now = time.Now()
+		if now.After(deadline) {
+			break
+		}
 
 		binary.BigEndian.PutUint64(buffer[0:8], sequence)
-		binary.BigEndian.PutUint64(buffer[8:16], uint64(now))
+		binary.BigEndian.PutUint64(buffer[8:16], uint64(now.UnixNano()))
 
 		_, err := conn.Write(buffer)
 		if err != nil {
@@ -93,6 +107,11 @@ func SendPackets(conn *net.UDPConn, duration time.Duration) error {
 		}
 
 		sequence++
+		nextSendAt = nextSendAt.Add(packetInterval)
+
+		if nextSendAt.Before(now) {
+			nextSendAt = now.Add(packetInterval)
+		}
 	}
 
 	return nil
@@ -121,7 +140,9 @@ func ReceivePackets(conn *net.UDPConn, duration time.Duration, progressHandler P
 			lastReadAt = now
 		}
 
-		if progressHandler != nil && !now.Before(nextProgressAt) {
+		if progressHandler != nil &&
+			!now.Before(nextProgressAt) &&
+			deadline.Sub(now) >= minProgressLeft {
 			progressHandler(buildQualityResult(stats, start, lastReadAt))
 			nextProgressAt = now.Add(time.Second)
 		}
@@ -251,4 +272,3 @@ func isClosedConnectionError(err error) bool {
 
 	return strings.Contains(msg, "use of closed network connection")
 }
-

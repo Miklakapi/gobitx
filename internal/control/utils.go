@@ -149,6 +149,29 @@ func decodeTransferResultPayload(frame protocol.Frame, expectedType protocol.Res
 	return result, nil
 }
 
+func decodeQualityResultPayload(frame protocol.Frame, expectedType protocol.ResultType) (protocol.QualityResult, error) {
+	var resultPayload protocol.ResultPayload
+
+	if err := json.Unmarshal(frame.Payload, &resultPayload); err != nil {
+		return protocol.QualityResult{}, err
+	}
+
+	if resultPayload.Type != expectedType {
+		return protocol.QualityResult{}, fmt.Errorf(
+			"unexpected result type: got %s, expected %s",
+			resultPayload.Type,
+			expectedType,
+		)
+	}
+
+	var result protocol.QualityResult
+	if err := json.Unmarshal(resultPayload.Data, &result); err != nil {
+		return protocol.QualityResult{}, err
+	}
+
+	return result, nil
+}
+
 func showLatencyResult(data protocol.LatencyResult) {
 	fmt.Printf(
 		"Latency: samples=%d min=%s avg=%s max=%s\n",
@@ -181,15 +204,15 @@ func showTransferResult(transferType protocol.ResultType, data protocol.Transfer
 func showQualityResult(data protocol.QualityResult) {
 	fmt.Printf(
 		"Quality: sent_packets=%d received_packets=%d lost_packets=%d loss_percent=%.2f "+
-			"avg_jitter=%s max_jitter=%s out_of_order=%d received_mbps=%s\n",
+			"avg_jitter=%s max_jitter=%s out_of_order=%d received_rate=%s\n",
 		data.SentPackets,
 		data.ReceivedPackets,
 		data.LostPackets,
 		data.LossPercent,
-		data.AvgJitter,
-		data.MaxJitter,
+		formatDuration(data.AvgJitter),
+		formatDuration(data.MaxJitter),
 		data.OutOfOrder,
-		data.ReceivedRate,
+		data.ReceivedRate.BitString(),
 	)
 }
 

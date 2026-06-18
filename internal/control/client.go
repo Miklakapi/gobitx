@@ -13,6 +13,7 @@ import (
 	"github.com/Miklakapi/gobitx/internal/config"
 	"github.com/Miklakapi/gobitx/internal/protocol"
 	"github.com/Miklakapi/gobitx/internal/tcpdata"
+	"github.com/Miklakapi/gobitx/internal/udpdata"
 )
 
 type Client struct {
@@ -76,6 +77,13 @@ func (c Client) Run() error {
 	}
 	showTransferResult(protocol.ResultUpload, uploadResult)
 	fmt.Println()
+
+	qualityResult, err := c.qualityTest(codec)
+	if err != nil {
+		return c.friendlyClientError(err)
+	}
+
+	showQualityResult(qualityResult)
 
 	return nil
 }
@@ -267,6 +275,92 @@ func (c Client) uploadTest(codec *protocol.Codec) (protocol.TransferResult, erro
 
 		default:
 			return protocol.TransferResult{}, fmt.Errorf("unexpected response: got %d, expected progress or result", responseFrame.Command)
+		}
+	}
+}
+
+func (c Client) qualityTest(codec *protocol.Codec) (protocol.QualityResult, error) {
+	slog.Debug("quality test started")
+
+	frame, err := requestFrame(
+		codec,
+		protocol.CommandQuality,
+		protocol.TransferRequest{DurationNS: c.cfg.Duration},
+		protocol.CommandReady,
+	)
+	if err != nil {
+		return protocol.QualityResult{}, err
+	}
+
+	payload, err := decodeReadyPayload(frame)
+	if err != nil {
+		return protocol.QualityResult{}, err
+	}
+
+	conn, err := udpdata.Dial(fmt.Sprint(c.cfg.Destination, ":", payload.Port))
+	if err != nil {
+		return protocol.QualityResult{}, err
+	}
+	defer conn.Close()
+
+	sendErrCh := make(chan error, 1)
+
+	go func() {
+		err := udpdata.SendPackets(conn, c.cfg.Duration)
+		closeErr := conn.Close()
+
+		if err != nil {
+			sendErrCh <- err
+			return
+		}
+
+		if closeErr != nil {
+			sendErrCh <- closeErr
+			return
+		}
+
+		sendErrCh <- nil
+	}()
+
+	for {
+		responseFrame, err := codec.ReadFrame()
+		if err != nil {
+			return protocol.QualityResult{}, err
+		}
+
+		if err := decodeErrorFrame(responseFrame); err != nil {
+			return protocol.QualityResult{}, err
+		}
+
+		switch responseFrame.Command {
+		case protocol.CommandProgress:
+			progress, err := decodeQualityResultPayload(responseFrame, protocol.ResultQuality)
+			if err != nil {
+				return protocol.QualityResult{}, err
+			}
+
+			showQualityResult(progress)
+
+		case protocol.CommandResult:
+			result, err := decodeQualityResultPayload(responseFrame, protocol.ResultQuality)
+			if err != nil {
+				return protocol.QualityResult{}, err
+			}
+
+			if err := writeProtocolFrame(codec, protocol.CommandOK, nil); err != nil {
+				return protocol.QualityResult{}, err
+			}
+
+			if err := <-sendErrCh; err != nil {
+				return protocol.QualityResult{}, err
+			}
+
+			slog.Debug("quality test completed")
+
+			return result, nil
+
+		default:
+			return protocol.QualityResult{}, fmt.Errorf("unexpected response: got %d, expected progress or result", responseFrame.Command)
 		}
 	}
 }
