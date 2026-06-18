@@ -9,7 +9,6 @@ import (
 
 type Config struct {
 	Mode        string
-	Protocol    string
 	Destination string
 	Duration    time.Duration
 	Port        string
@@ -32,12 +31,10 @@ func New() (Config, error) {
 	flags := flag.NewFlagSet(cfg.Mode, flag.ExitOnError)
 
 	var port int
-	var protocol string
 	var verbose bool
 
 	flags.DurationVar(&cfg.Duration, "duration", 10*time.Second, "Test duration, for example 10s, 30s or 1m")
 	flags.IntVar(&port, "port", 5200, "Port to listen on or connect to")
-	flags.StringVar(&protocol, "protocol", "both", "Protocol to use: tcp, udp or both")
 	flags.BoolVar(&verbose, "verbose", false, "Show debug logs")
 
 	err := flags.Parse(os.Args[2:])
@@ -47,11 +44,6 @@ func New() (Config, error) {
 
 	cfg.Port = fmt.Sprint(":", port)
 
-	if protocol != "udp" && protocol != "tcp" && protocol != "both" {
-		return cfg, fmt.Errorf("Invalid protocol: use 'tcp', 'udp' or 'both'")
-	}
-
-	cfg.Protocol = protocol
 	cfg.Verbose = verbose
 
 	if cfg.Mode == "client" {
