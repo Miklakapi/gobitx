@@ -167,7 +167,7 @@ func (c Client) downloadTest(codec *protocol.Codec) (protocol.TransferResult, er
 		showTransferResult(protocol.ResultDownload, downloadResult)
 
 		if err := sendProgress(codec, protocol.ResultDownload, downloadResult); err != nil {
-			slog.Warn("failed to send download result", "err", err)
+			slog.Warn("failed to send download progress", "err", err)
 			return
 		}
 	})
