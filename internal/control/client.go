@@ -2,7 +2,6 @@ package control
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -137,30 +136,20 @@ func (c Client) downloadTest(codec *protocol.Codec) (protocol.TransferResult, er
 		return protocol.TransferResult{}, err
 	}
 
-	var payload protocol.ReadyPayload
-	if err := json.Unmarshal(frame.Payload, &payload); err != nil {
-		return protocol.TransferResult{}, err
-	}
-
-	var d net.Dialer
-
-	timeoutCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-	defer cancel()
-
-	conn, err := d.DialContext(timeoutCtx, "tcp", fmt.Sprint(c.cfg.Destination, ":", payload.Port))
+	payload, err := decodeReadyPayload(frame)
 	if err != nil {
 		return protocol.TransferResult{}, err
 	}
 
-	dataCtx, cancelDataCtx := context.WithCancel(c.ctx)
-	defer cancelDataCtx()
-
-	go func() {
-		<-dataCtx.Done()
-		conn.Close()
-	}()
+	conn, err := c.dialDataConnection(payload.Port)
+	if err != nil {
+		return protocol.TransferResult{}, err
+	}
 
 	defer conn.Close()
+
+	cancelDataCtx := c.closeDataConnectionOnContext(conn)
+	defer cancelDataCtx()
 
 	slog.Debug("data receiving started")
 	result, err := tcpdata.ReceiveData(conn, c.cfg.Duration, func(downloadResult protocol.TransferResult) {
@@ -202,30 +191,20 @@ func (c Client) uploadTest(codec *protocol.Codec) (protocol.TransferResult, erro
 		return protocol.TransferResult{}, err
 	}
 
-	var payload protocol.ReadyPayload
-	if err := json.Unmarshal(frame.Payload, &payload); err != nil {
-		return protocol.TransferResult{}, err
-	}
-
-	var d net.Dialer
-
-	timeoutCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-	defer cancel()
-
-	conn, err := d.DialContext(timeoutCtx, "tcp", fmt.Sprint(c.cfg.Destination, ":", payload.Port))
+	payload, err := decodeReadyPayload(frame)
 	if err != nil {
 		return protocol.TransferResult{}, err
 	}
 
-	dataCtx, cancelDataCtx := context.WithCancel(c.ctx)
-	defer cancelDataCtx()
-
-	go func() {
-		<-dataCtx.Done()
-		conn.Close()
-	}()
+	conn, err := c.dialDataConnection(payload.Port)
+	if err != nil {
+		return protocol.TransferResult{}, err
+	}
 
 	defer conn.Close()
+
+	cancelDataCtx := c.closeDataConnectionOnContext(conn)
+	defer cancelDataCtx()
 
 	slog.Debug("data sending started")
 
@@ -260,34 +239,16 @@ func (c Client) uploadTest(codec *protocol.Codec) (protocol.TransferResult, erro
 
 		switch responseFrame.Command {
 		case protocol.CommandProgress:
-			var progressPayload protocol.ResultPayload
-			if err := json.Unmarshal(responseFrame.Payload, &progressPayload); err != nil {
-				return protocol.TransferResult{}, err
-			}
-
-			if progressPayload.Type != protocol.ResultUpload {
-				return protocol.TransferResult{}, fmt.Errorf("unexpected progress type: got %s, expected %s", progressPayload.Type, protocol.ResultUpload)
-			}
-
-			var progress protocol.TransferResult
-			if err := json.Unmarshal(progressPayload.Data, &progress); err != nil {
+			progress, err := decodeTransferResultPayload(responseFrame, protocol.ResultUpload)
+			if err != nil {
 				return protocol.TransferResult{}, err
 			}
 
 			showTransferResult(protocol.ResultUpload, progress)
 
 		case protocol.CommandResult:
-			var resultPayload protocol.ResultPayload
-			if err := json.Unmarshal(responseFrame.Payload, &resultPayload); err != nil {
-				return protocol.TransferResult{}, err
-			}
-
-			if resultPayload.Type != protocol.ResultUpload {
-				return protocol.TransferResult{}, fmt.Errorf("unexpected result type: got %s, expected %s", resultPayload.Type, protocol.ResultUpload)
-			}
-
-			var result protocol.TransferResult
-			if err := json.Unmarshal(resultPayload.Data, &result); err != nil {
+			result, err := decodeTransferResultPayload(responseFrame, protocol.ResultUpload)
+			if err != nil {
 				return protocol.TransferResult{}, err
 			}
 
@@ -308,6 +269,26 @@ func (c Client) uploadTest(codec *protocol.Codec) (protocol.TransferResult, erro
 			return protocol.TransferResult{}, fmt.Errorf("unexpected response: got %d, expected progress or result", responseFrame.Command)
 		}
 	}
+}
+
+func (c Client) dialDataConnection(port int) (net.Conn, error) {
+	var d net.Dialer
+
+	timeoutCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	return d.DialContext(timeoutCtx, "tcp", fmt.Sprint(c.cfg.Destination, ":", port))
+}
+
+func (c Client) closeDataConnectionOnContext(conn net.Conn) context.CancelFunc {
+	dataCtx, cancel := context.WithCancel(c.ctx)
+
+	go func() {
+		<-dataCtx.Done()
+		conn.Close()
+	}()
+
+	return cancel
 }
 
 func (c Client) friendlyClientError(err error) error {

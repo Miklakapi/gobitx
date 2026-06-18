@@ -116,6 +116,39 @@ func decodeErrorFrame(frame protocol.Frame) error {
 	return nil
 }
 
+func decodeReadyPayload(frame protocol.Frame) (protocol.ReadyPayload, error) {
+	var payload protocol.ReadyPayload
+
+	if err := json.Unmarshal(frame.Payload, &payload); err != nil {
+		return protocol.ReadyPayload{}, err
+	}
+
+	return payload, nil
+}
+
+func decodeTransferResultPayload(frame protocol.Frame, expectedType protocol.ResultType) (protocol.TransferResult, error) {
+	var resultPayload protocol.ResultPayload
+
+	if err := json.Unmarshal(frame.Payload, &resultPayload); err != nil {
+		return protocol.TransferResult{}, err
+	}
+
+	if resultPayload.Type != expectedType {
+		return protocol.TransferResult{}, fmt.Errorf(
+			"unexpected result type: got %s, expected %s",
+			resultPayload.Type,
+			expectedType,
+		)
+	}
+
+	var result protocol.TransferResult
+	if err := json.Unmarshal(resultPayload.Data, &result); err != nil {
+		return protocol.TransferResult{}, err
+	}
+
+	return result, nil
+}
+
 func showLatencyResult(data protocol.LatencyResult) {
 	fmt.Printf(
 		"Latency: samples=%d min=%s avg=%s max=%s\n",
